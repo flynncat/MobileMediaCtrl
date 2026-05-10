@@ -1,0 +1,12 @@
+root = true
+
+[*]
+charset = utf-8
+
+[*.{cs,csproj,props,targets,xaml}]
+charset = utf-8-bom
+end_of_line = crlf
+insert_final_newline = true
+
+[*.sln]
+end_of_line = crlf

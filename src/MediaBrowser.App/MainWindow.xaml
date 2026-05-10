@@ -1,0 +1,15 @@
+<Window x:Class="MediaBrowser.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="外接盘媒体浏览"
+        Width="720"
+        Height="420"
+        WindowStartupLocation="CenterScreen">
+  <StackPanel Margin="24" VerticalAlignment="Center">
+    <TextBlock Text="程序已在运行。" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12"/>
+    <TextBlock Text="插入 U 盘或用手机连接电脑并选择「文件传输」后，将自动弹出浏览窗口。"
+               Margin="0,0,0,12"/>
+    <TextBlock Text="您也可以最小化本窗口，它不会影响自动弹出。"
+               Opacity="0.85"/>
+  </StackPanel>
+</Window>
