@@ -58,7 +58,7 @@
                   <ItemsPanelTemplate>
                     <WrapPanel Orientation="Horizontal"/>
                   </ItemsPanelTemplate>
-                </ItemsControl.ItemTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
