@@ -1,0 +1,14 @@
+---
+description: 本仓库内完成修改后须及时提交并推送到 GitHub
+alwaysApply: true
+---
+
+# Git 同步约定
+
+在本工作区（MobileMediaCtrl / 外接盘媒体工具）中：
+
+1. **每次完成一批有意义的代码或文档修改后**，在收尾前执行：`git status` → `git add -A` → `git commit -m "…"` → `git push origin main`（若当前分支不是 `main` 则推当前跟踪分支）。
+2. **除非用户明确说「先不要提交」**，否则不要留下未提交的本地修改就结束对话。
+3. 提交信息用简短英文或中文均可，需说明「改了什么」；有关联 issue 时可带编号。
+
+远程默认为：`git@github.com:flynncat/MobileMediaCtrl.git`。

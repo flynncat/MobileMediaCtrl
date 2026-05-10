@@ -46,8 +46,10 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# Cursor / local
-.cursor/
+# Cursor：忽略本地缓存，但保留可提交的共享规则
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 *.swp
 *.tmp
 *~
