@@ -1,5 +1,6 @@
-﻿using MediaBrowser.Core.Models;
+using MediaBrowser.Core.Models;
 using MediaBrowser.Core.Services;
+using Xunit;
 
 namespace MediaBrowser.Tests;
 

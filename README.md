@@ -25,7 +25,7 @@
 3. **生成 → 生成解决方案**（Ctrl+Shift+B）
 4. 将启动项目设为 **MediaBrowser.App**，**F5** 或 **Ctrl+F5** 运行
 
-输出目录示例：`src/MediaBrowser.App/bin/Debug/net8.0-windows/MediaBrowser.App.exe`
+输出目录示例：`src/MediaBrowser.App/bin/Debug/net8.0-windows10.0.17763.0/MediaBrowser.App.exe`
 
 ## 命令行
 
