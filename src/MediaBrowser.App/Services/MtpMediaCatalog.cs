@@ -51,47 +51,94 @@ public static class MtpMediaCatalog
         List<MediaItem> list,
         CancellationToken cancellationToken)
     {
-        IEnumerable<string> files;
-        try
-        {
-            files = device.EnumerateFiles(storagePath, "*.*", SearchOption.AllDirectories);
-        }
-        catch
-        {
-            // 某些存储卷可能无法访问（如只读分区），跳过
-            return;
-        }
+        // 使用手动递归方式逐目录枚举，避免惰性迭代器在 foreach 中抛出 COMException。
+        var dirStack = new Stack<string>();
+        dirStack.Push(storagePath);
 
-        foreach (var path in files)
+        while (dirStack.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!MediaExtensionLists.IsMediaFile(path))
-                continue;
+            var currentDir = dirStack.Pop();
 
+            // 枚举当前目录下的子目录
             try
             {
-                var fi = device.GetFileInfo(path);
-                var folder = fi.Directory?.FullName ?? storagePath;
-                var sortUtc = SafeLastWriteUtc(fi);
-
-                list.Add(new MediaItem
+                foreach (var subDir in device.EnumerateDirectories(currentDir))
                 {
-                    Id = $"mtp:{deviceName}|{path}",
-                    SourceKind = MediaSourceKind.Mtp,
-                    DisplayName = Path.GetFileName(path.TrimEnd('\\')),
-                    ContainingFolderPath = folder,
-                    SortTimeUtc = sortUtc,
-                    IsVideo = MediaExtensionLists.IsVideo(path),
-                    MtpDeviceId = deviceName,
-                    MtpObjectId = path,
-                });
+                    dirStack.Push(subDir);
+                }
             }
             catch
             {
-                // 单文件失败时跳过
+                // 无法访问的目录，跳过
+            }
+
+            // 枚举当前目录下的文件（仅当前层，不递归）
+            IEnumerable<string> files;
+            try
+            {
+                files = device.EnumerateFiles(currentDir);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var path in SafeEnumerate(files))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!MediaExtensionLists.IsMediaFile(path))
+                    continue;
+
+                try
+                {
+                    var fi = device.GetFileInfo(path);
+                    var folder = fi.Directory?.FullName ?? currentDir;
+                    var sortUtc = SafeLastWriteUtc(fi);
+
+                    list.Add(new MediaItem
+                    {
+                        Id = $"mtp:{deviceName}|{path}",
+                        SourceKind = MediaSourceKind.Mtp,
+                        DisplayName = Path.GetFileName(path.TrimEnd('\\')),
+                        ContainingFolderPath = folder,
+                        SortTimeUtc = sortUtc,
+                        IsVideo = MediaExtensionLists.IsVideo(path),
+                        MtpDeviceId = deviceName,
+                        MtpObjectId = path,
+                    });
+                }
+                catch
+                {
+                    // 单文件失败时跳过
+                }
             }
         }
     }
+
+    /// <summary>
+    /// 安全迭代惰性枚举器，遇到异常时终止迭代而非抛出。
+    /// </summary>
+    private static IEnumerable<string> SafeEnumerate(IEnumerable<string> source)
+    {
+        using var enumerator = source.GetEnumerator();
+        while (true)
+        {
+            string? current;
+            try
+            {
+                if (!enumerator.MoveNext())
+                    yield break;
+                current = enumerator.Current;
+            }
+            catch
+            {
+                yield break;
+            }
+            yield return current;
+        }
+    }
+
 
 
     private static DateTime SafeLastWriteUtc(MediaFileInfo fi)
