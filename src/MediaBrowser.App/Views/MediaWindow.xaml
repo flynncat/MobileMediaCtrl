@@ -49,11 +49,13 @@
     <ListBox x:Name="MediaListBox"
              ItemsSource="{Binding GroupedView}"
              VirtualizingPanel.IsVirtualizing="True"
+             VirtualizingPanel.IsVirtualizingWhenGrouping="True"
              VirtualizingPanel.VirtualizationMode="Recycling"
              VirtualizingPanel.ScrollUnit="Pixel"
              ScrollViewer.CanContentScroll="True"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
              ScrollViewer.VerticalScrollBarVisibility="Auto"
+
              SelectionMode="Extended"
              BorderThickness="0"
              Background="Transparent"
