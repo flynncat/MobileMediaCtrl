@@ -51,12 +51,14 @@
              VirtualizingPanel.IsVirtualizing="True"
              VirtualizingPanel.VirtualizationMode="Recycling"
              VirtualizingPanel.ScrollUnit="Pixel"
+             ScrollViewer.CanContentScroll="True"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
              ScrollViewer.VerticalScrollBarVisibility="Auto"
              SelectionMode="Extended"
              BorderThickness="0"
              Background="Transparent"
              HorizontalContentAlignment="Stretch">
+
       <ListBox.ItemsPanel>
         <ItemsPanelTemplate>
           <vwp:VirtualizingWrapPanel Orientation="Horizontal"
