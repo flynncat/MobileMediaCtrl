@@ -451,9 +451,62 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// 为MTP设备同步下载文件到临时目录以支持Shell拖拽。
+    /// 必须同步执行，因为 DoDragDrop 要求在鼠标按下状态下调用。
+    /// </summary>
+    public IReadOnlyList<string> StageFilesForShellDragSync(IReadOnlyList<MediaDragRecord> records)
+    {
+        var paths = new List<string>();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "MediaBrowserDrag_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        foreach (var r in records)
+        {
+            if (r.Kind == "fs" && !string.IsNullOrEmpty(r.FsPath) && File.Exists(r.FsPath))
+            {
+                paths.Add(r.FsPath!);
+                continue;
+            }
+
+            if (r.Kind != "mtp" || string.IsNullOrEmpty(r.MtpPath) || string.IsNullOrEmpty(r.PnpId))
+                continue;
+
+            var dev = string.Equals(r.PnpId, _descriptor.MtpDeviceId, StringComparison.OrdinalIgnoreCase)
+                ? _mtpDevice
+                : MtpDeviceLister.TryConnectByName(r.PnpId);
+            if (dev is null)
+                continue;
+
+            var name = string.IsNullOrWhiteSpace(r.DisplayName)
+                ? Path.GetFileName(r.MtpPath.TrimEnd('\\'))
+                : r.DisplayName;
+            var dest = Path.Combine(tempRoot, name);
+            try
+            {
+                using (var fs = File.Create(dest))
+                {
+                    dev.DownloadFile(r.MtpPath!, fs);
+                }
+
+                paths.Add(dest);
+            }
+            catch
+            {
+                // 忽略单个文件失败
+            }
+
+            if (dev != _mtpDevice)
+                dev.Disconnect();
+        }
+
+        return paths;
+    }
+
+    /// <summary>
     /// 为MTP设备下载文件到临时目录以支持Shell拖拽。
     /// 在后台线程执行以避免阻塞UI。
     /// </summary>
+
     public async Task<IReadOnlyList<string>> StageFilesForShellDragAsync(IReadOnlyList<MediaDragRecord> records)
     {
         var paths = new List<string>();

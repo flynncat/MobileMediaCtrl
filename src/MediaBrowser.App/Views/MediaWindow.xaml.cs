@@ -218,7 +218,7 @@ public partial class MediaWindow : Window
     private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
         _dragPrepared = false;
 
-    private async void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (!_dragPrepared || e.LeftButton != MouseButtonState.Pressed)
             return;
@@ -247,30 +247,31 @@ public partial class MediaWindow : Window
         data.SetData(InternalDragFormats.SourceWindowId, InstanceId);
         data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
 
+        // 同步准备 Shell 拖拽路径（必须同步，否则 DoDragDrop 无法在鼠标按下状态启动）
+        IReadOnlyList<string> shellPaths;
         if (_vm.IsFileSystemDevice)
         {
             // 文件系统设备：直接使用文件路径，零延迟
-            var shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
-            if (shellPaths.Count > 0)
-                data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+            shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
         }
         else
         {
-            // MTP设备：需要先下载到临时目录
-            // 使用状态提示告知用户正在准备文件
-            var originalStatus = _vm.StatusText;
-            _vm.StatusText = LanguageManager.GetString("VM_PreparingDrag");
+            // MTP设备：同步下载到临时目录（显示等待光标）
+            var prevCursor = Mouse.OverrideCursor;
+            Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+
             try
             {
-                var shellPaths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
-                if (shellPaths.Count > 0)
-                    data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+                shellPaths = _vm.StageFilesForShellDragSync(records);
             }
             finally
             {
-                _vm.StatusText = originalStatus;
+                Mouse.OverrideCursor = prevCursor;
             }
         }
+
+        if (shellPaths.Count > 0)
+            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
 
         try
         {
@@ -281,6 +282,7 @@ public partial class MediaWindow : Window
             // 忽略拖放被取消
         }
     }
+
 
 
     /// <summary>双击缩略图卡片时打开预览窗口。</summary>

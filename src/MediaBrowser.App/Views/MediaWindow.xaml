@@ -38,13 +38,15 @@
           <Button Content="{DynamicResource Media_ToggleSelectAll}" Command="{Binding ToggleSelectAllCommand}"
                   AutomationProperties.Name="全选或取消全选"/>
           <Button Content="{DynamicResource Media_OpenExportFolder}" Command="{Binding OpenExportFolderCommand}"
-                  AutomationProperties.Name="打开导出文件夹" Margin="8,0,0,0"/>
+                  AutomationProperties.Name="打开导出文件夹"/>
+
         </StackPanel>
 
         <TextBlock Text="{DynamicResource Media_Hint}"
-                   FontSize="13"
+                   FontSize="16"
                    Opacity="0.65"
                    Margin="0,8,0,0"/>
+
       </StackPanel>
     </Border>
 
