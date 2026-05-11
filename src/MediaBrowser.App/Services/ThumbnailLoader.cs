@@ -38,14 +38,25 @@ public sealed class ThumbnailLoader
             // ── 文件系统来源 ──
             if (item.SourceKind == MediaSourceKind.FileSystem && !string.IsNullOrEmpty(item.FileSystemPath))
             {
-                await Task.Run(() => BuildThumbnailToFile(item.FileSystemPath!, cachePath, maxEdge, item.IsVideo),
-                    cancellationToken).ConfigureAwait(false);
+                if (item.IsVideo)
+                {
+                    // 视频：必须在 STA 线程上调用 Shell API
+                    await RunOnStaThreadAsync(() =>
+                        BuildVideoThumbnailViaShell(item.FileSystemPath!, cachePath, maxEdge),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await Task.Run(() => BuildImageThumbnail(item.FileSystemPath!, cachePath, maxEdge),
+                        cancellationToken).ConfigureAwait(false);
+                }
 
                 if (File.Exists(cachePath))
                     return await LoadBitmapFromFileAsync(cachePath, cancellationToken).ConfigureAwait(false);
 
                 return null;
             }
+
 
             // ── MTP 来源 ──
             if (item.SourceKind == MediaSourceKind.Mtp && mtpDevice is { IsConnected: true } &&
@@ -75,26 +86,31 @@ public sealed class ThumbnailLoader
                     return await LoadBitmapFromFileAsync(cachePath, cancellationToken).ConfigureAwait(false);
                 }
 
-                // 回退：下载原始文件到临时目录，再生成缩略图（图片和视频均支持）
-                var tempPath = await DownloadMtpToTempAsync(item, mtpDevice, cancellationToken).ConfigureAwait(false);
-                if (tempPath != null)
+                // 回退：仅对图片文件下载原始文件生成缩略图
+                // 视频文件跳过回退下载（文件太大，会长时间阻塞 MTP 串行通道）
+                if (!item.IsVideo)
                 {
-                    try
+                    var tempPath = await DownloadMtpToTempAsync(item, mtpDevice, cancellationToken).ConfigureAwait(false);
+                    if (tempPath != null)
                     {
-                        await Task.Run(() => BuildThumbnailToFile(tempPath, cachePath, maxEdge, item.IsVideo),
-                            cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            await Task.Run(() => BuildImageThumbnail(tempPath, cachePath, maxEdge),
+                                cancellationToken).ConfigureAwait(false);
 
-                        if (File.Exists(cachePath))
-                            return await LoadBitmapFromFileAsync(cachePath, cancellationToken).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        // 视频临时文件可能较大，用完即删
-                        TryDeleteFile(tempPath);
+                            if (File.Exists(cachePath))
+                                return await LoadBitmapFromFileAsync(cachePath, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            TryDeleteFile(tempPath);
+                        }
                     }
                 }
 
+                // MTP 视频且 DownloadThumbnail 失败 → 返回 null，显示默认占位图标
                 return null;
+
             }
         }
         catch
@@ -235,6 +251,37 @@ public sealed class ThumbnailLoader
     {
         try { File.Delete(path); } catch { /* 忽略 */ }
     }
+
+    /// <summary>
+    /// 在专用 STA 线程上执行委托。Shell COM 接口（如 IShellItemImageFactory）
+    /// 必须在 STA 线程上调用，而 Task.Run 使用 MTA 线程池会导致 COM 调用失败。
+    /// </summary>
+    private static Task RunOnStaThreadAsync(Action action, CancellationToken cancellationToken = default)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                action();
+                tcs.SetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                tcs.SetCanceled(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        return tcs.Task;
+    }
+
 
     // ══════════════════════════════════════════════════════════════
     //  Windows Shell API — IShellItemImageFactory P/Invoke

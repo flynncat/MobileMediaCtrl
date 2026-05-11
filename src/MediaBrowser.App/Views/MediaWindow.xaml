@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
         mc:Ignorable="d"
         Title="{Binding Title}"
         Width="1100"
@@ -28,75 +29,156 @@
                    Text="{Binding CurrentDropTargetPath, UpdateSourceTrigger=PropertyChanged}"
                    AutomationProperties.Name="复制目标路径"/>
           <Button Grid.Column="2" Content="{DynamicResource Media_Browse}" Command="{Binding BrowseTargetFolderCommand}"
-
                   AutomationProperties.Name="浏览目标文件夹"/>
         </Grid>
         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
           <Button Content="{DynamicResource Media_Refresh}" Command="{Binding RefreshCommand}" AutomationProperties.Name="刷新列表"/>
-
           <Button Content="{DynamicResource Media_CopySelected}" Command="{Binding CopySelectedToTargetCommand}"
-
                   AutomationProperties.Name="复制已选到目标文件夹"/>
           <Button Content="{DynamicResource Media_ToggleSelectAll}" Command="{Binding ToggleSelectAllCommand}"
-
                   AutomationProperties.Name="全选或取消全选"/>
         </StackPanel>
         <TextBlock Text="{DynamicResource Media_Hint}"
-
                    FontSize="13"
                    Opacity="0.65"
                    Margin="0,8,0,0"/>
-
       </StackPanel>
     </Border>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <ItemsControl ItemsSource="{Binding DayGroups}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <VirtualizingStackPanel IsVirtualizing="True" VirtualizationMode="Recycling"/>
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Expander IsExpanded="True" Header="{Binding DateLabel}">
-              <ItemsControl ItemsSource="{Binding Items}" Margin="0,8,0,0">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal"/>
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
-                            CornerRadius="4"
-                            PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="Tile_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
-                            MouseLeftButtonDown="Tile_MouseDoubleClick"
-                            AutomationProperties.Name="媒体缩略图卡片">
+    <!-- 使用 ListBox + VirtualizingWrapPanel 实现虚拟化 -->
+    <ListBox x:Name="MediaListBox"
+             ItemsSource="{Binding GroupedView}"
+             VirtualizingPanel.IsVirtualizing="True"
+             VirtualizingPanel.VirtualizationMode="Recycling"
+             VirtualizingPanel.ScrollUnit="Pixel"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             ScrollViewer.VerticalScrollBarVisibility="Auto"
+             SelectionMode="Extended"
+             BorderThickness="0"
+             Background="Transparent"
+             HorizontalContentAlignment="Stretch">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <vwp:VirtualizingWrapPanel Orientation="Horizontal"
+                                      SpacingMode="Uniform"
+                                      StretchItems="False"/>
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
 
-                      <DockPanel>
-                        <CheckBox DockPanel.Dock="Top"
-                                  IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                  Content="{DynamicResource Media_Select}"
+      <!-- 分组头模板 -->
+      <ListBox.GroupStyle>
+        <GroupStyle>
+          <GroupStyle.HeaderTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Name}"
+                         FontSize="18" FontWeight="Bold"
+                         Margin="4,12,4,4"
+                         Foreground="#333"/>
+            </DataTemplate>
+          </GroupStyle.HeaderTemplate>
+          <GroupStyle.Panel>
+            <ItemsPanelTemplate>
+              <vwp:VirtualizingWrapPanel Orientation="Horizontal"
+                                          SpacingMode="Uniform"
+                                          StretchItems="False"/>
+            </ItemsPanelTemplate>
+          </GroupStyle.Panel>
+        </GroupStyle>
+      </ListBox.GroupStyle>
 
-                                  Margin="4"
-                                  AutomationProperties.Name="选择此文件"/>
-                        <Image Height="120" Stretch="UniformToFill" Margin="4"
-                               Source="{Binding Thumbnail}"
-                               AutomationProperties.Name="{Binding Item.DisplayName}"/>
-                        <TextBlock Text="{Binding Item.DisplayName}" TextTrimming="CharacterEllipsis"
-                                   Margin="4,0,4,4" FontSize="14" MaxHeight="44"/>
-                      </DockPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Expander>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </ScrollViewer>
+      <!-- 隐藏 ListBox 默认选中样式，使用自定义 CheckBox -->
+      <ListBox.ItemContainerStyle>
+        <Style TargetType="ListBoxItem">
+          <Setter Property="Padding" Value="0"/>
+          <Setter Property="Margin" Value="0"/>
+          <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="ListBoxItem">
+                <ContentPresenter/>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+      </ListBox.ItemContainerStyle>
+
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
+                  CornerRadius="4"
+                  PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
+                  PreviewMouseMove="Tile_PreviewMouseMove"
+                  PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
+                  MouseLeftButtonDown="Tile_MouseDoubleClick"
+                  AutomationProperties.Name="媒体缩略图卡片">
+            <DockPanel>
+              <CheckBox DockPanel.Dock="Top"
+                        IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Content="{DynamicResource Media_Select}"
+                        Margin="4"
+                        AutomationProperties.Name="选择此文件"/>
+              <!-- 缩略图 + 视频播放图标叠加 -->
+              <Grid Height="120" Margin="4">
+                <!-- 缩略图 -->
+                <Image Stretch="UniformToFill"
+                       Source="{Binding Thumbnail}"
+                       AutomationProperties.Name="{Binding Item.DisplayName}"/>
+                <!-- 视频默认占位图标（当缩略图为空且是视频时显示） -->
+                <Border Background="#88000000" CornerRadius="4"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Padding="12">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="Visibility" Value="Collapsed"/>
+                      <Style.Triggers>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsVideo}" Value="True"/>
+                            <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
+                          </MultiDataTrigger.Conditions>
+                          <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <TextBlock Text="🎬" FontSize="28" Foreground="White"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <!-- 视频播放图标叠加（当是视频且有缩略图时显示） -->
+                <Border Background="#66000000" CornerRadius="20"
+                        Width="40" Height="40"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="Visibility" Value="Collapsed"/>
+                      <Style.Triggers>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsVideo}" Value="True"/>
+                          </MultiDataTrigger.Conditions>
+                          <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsVideo}" Value="True"/>
+                            <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
+                          </MultiDataTrigger.Conditions>
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                        </MultiDataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <Path Data="M8,0 L20,10 L8,20 Z" Fill="White"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Margin="3,0,0,0"/>
+                </Border>
+              </Grid>
+              <TextBlock Text="{Binding Item.DisplayName}" TextTrimming="CharacterEllipsis"
+                         Margin="4,0,4,4" FontSize="14" MaxHeight="44"/>
+            </DockPanel>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
   </DockPanel>
 </Window>

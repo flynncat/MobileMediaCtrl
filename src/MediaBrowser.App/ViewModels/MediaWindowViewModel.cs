@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -24,13 +25,17 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     private readonly Dispatcher _dispatcher;
     private MediaDevice? _mtpDevice;
     private int _totalItemCount;
+
+    // ── MTP 批次节流 ──
+    private readonly object _batchLock = new();
+    private List<MediaItem>? _pendingBatch;
+    private bool _batchScheduled;
+
     /// <summary>当前连接的MTP设备（预览时需要用来下载文件）。</summary>
     public MediaDevice? MtpDevice => _mtpDevice;
 
-
     private string _currentDropTargetPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     private string _statusText = LanguageManager.GetString("VM_Loading");
-
     private bool _isBusy;
 
     public MediaWindowViewModel(DeviceSessionDescriptor descriptor)
@@ -42,13 +47,20 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         RefreshCommand = new RelayCommand(_ => _ = LoadAsync());
         CopySelectedToTargetCommand = new RelayCommand(_ => _ = CopySelectedToTargetAsync(), _ => !IsBusy);
         ToggleSelectAllCommand = new RelayCommand(_ => ToggleSelectAll());
-    }
 
+        // 配置 CollectionViewSource 分组
+        var cvs = new CollectionViewSource { Source = Tiles };
+        cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MediaTileViewModel.GroupKey)));
+        GroupedView = cvs.View;
+    }
 
     public string Title { get; }
 
-    public ObservableCollection<MediaGroupViewModel> DayGroups { get; } = new();
+    /// <summary>扁平化的媒体 tile 集合。</summary>
+    public ObservableCollection<MediaTileViewModel> Tiles { get; } = new();
 
+    /// <summary>带分组的视图，供 XAML 绑定。</summary>
+    public System.ComponentModel.ICollectionView GroupedView { get; }
 
     public string CurrentDropTargetPath
     {
@@ -83,7 +95,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         StatusText = LanguageManager.GetString("VM_Loading");
         _totalItemCount = 0;
 
-        DayGroups.Clear();
+        Tiles.Clear();
 
         try
         {
@@ -94,11 +106,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 var catalog = new FileSystemMediaCatalog();
                 var items = await catalog.EnumerateAsync(root).ConfigureAwait(true);
 
-                // 文件系统：一次性分组显示，然后异步加载缩略图
-                AddItemsToGroups(items);
+                // 文件系统：一次性分组显示
+                AddItemsToFlatList(items);
                 _totalItemCount = items.Count;
                 StatusText = LanguageManager.GetString("VM_MediaCount", _totalItemCount);
-                _ = LoadThumbnailsForAsync(AllTiles().ToList());
             }
             else
             {
@@ -114,20 +125,51 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 var progress = new Progress<MtpScanProgress>(p => StatusText = p.Message);
                 Action<IReadOnlyList<MediaItem>> batchCallback = batch =>
                 {
-                    // 批次回调在后台线程，需要 Dispatch 到 UI 线程
-                    _dispatcher.Invoke(() =>
+                    // 批次节流：累积多个小批次后合并更新 UI
+                    lock (_batchLock)
                     {
-                        var newTiles = AddItemsToGroups(batch);
-                        _totalItemCount += batch.Count;
-                        // 立即为这批新文件启动缩略图加载
-                        _ = LoadThumbnailsForAsync(newTiles);
-                    });
+                        _pendingBatch ??= new List<MediaItem>();
+                        _pendingBatch.AddRange(batch);
+
+                        if (!_batchScheduled)
+                        {
+                            _batchScheduled = true;
+                            // 延迟 100ms 合并批次
+                            _dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+                            {
+                                List<MediaItem> toProcess;
+                                lock (_batchLock)
+                                {
+                                    toProcess = _pendingBatch!;
+                                    _pendingBatch = null;
+                                    _batchScheduled = false;
+                                }
+
+                                AddItemsToFlatList(toProcess);
+                                _totalItemCount += toProcess.Count;
+                                StatusText = LanguageManager.GetString("VM_Scanning", _totalItemCount);
+                            });
+                        }
+                    }
                 };
 
                 var items = await MtpMediaCatalog.EnumerateAsync(
                     _mtpDevice, progress, batchCallback).ConfigureAwait(true);
 
-                _totalItemCount = items.Count;
+                // 最终刷新：确保所有剩余批次都已处理
+                List<MediaItem>? remaining;
+                lock (_batchLock)
+                {
+                    remaining = _pendingBatch;
+                    _pendingBatch = null;
+                    _batchScheduled = false;
+                }
+                if (remaining is { Count: > 0 })
+                {
+                    AddItemsToFlatList(remaining);
+                    _totalItemCount += remaining.Count;
+                }
+
                 StatusText = LanguageManager.GetString("VM_MediaCount", _totalItemCount);
             }
         }
@@ -142,93 +184,59 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// 将一批 MediaItem 增量插入到已有的月份分组中。
-    /// 若对应月份组已存在则追加，否则创建新组并插入到正确的排序位置。
-    /// 返回新创建的 MediaTileViewModel 列表（用于启动缩略图加载）。
+    /// 将一批 MediaItem 增量插入到扁平集合中，按月份分组、时间从新到旧排序。
     /// </summary>
-    private List<MediaTileViewModel> AddItemsToGroups(IEnumerable<MediaItem> items)
+    private void AddItemsToFlatList(IEnumerable<MediaItem> items)
     {
         Func<int, int, string> labelFormatter = (y, m) =>
             LanguageManager.GetString("Group_MonthFormat", y, m);
 
-        var newTiles = new List<MediaTileViewModel>();
-
         foreach (var item in items)
         {
             var (year, month) = TimelineGrouper.GetMonthKey(item);
-            var tile = new MediaTileViewModel(item);
-            newTiles.Add(tile);
+            var groupKey = labelFormatter(year, month);
+            var tile = new MediaTileViewModel(item, groupKey);
 
-            // 查找已有的月份组
-            var group = DayGroups.FirstOrDefault(g => g.Year == year && g.Month == month);
-            if (group is not null)
+            // 找到正确的插入位置（按时间从新到旧）
+            var insertIdx = FindInsertIndex(tile);
+            Tiles.Insert(insertIdx, tile);
+        }
+    }
+
+    /// <summary>
+    /// 在扁平集合中找到正确的插入位置，保持按月份分组、组内按时间从新到旧排序。
+    /// </summary>
+    private int FindInsertIndex(MediaTileViewModel newTile)
+    {
+        var newTime = newTile.Item.SortTimeUtc;
+        var newKey = newTile.GroupKey;
+
+        for (int i = 0; i < Tiles.Count; i++)
+        {
+            var existing = Tiles[i];
+            // 先按分组键排序（月份从新到旧），再按时间从新到旧
+            if (existing.GroupKey == newKey)
             {
-                // 插入到组内正确的排序位置（从新到旧）
-                var insertIdx = 0;
-                while (insertIdx < group.Items.Count &&
-                       group.Items[insertIdx].Item.SortTimeUtc >= item.SortTimeUtc)
-                    insertIdx++;
-                group.Items.Insert(insertIdx, tile);
+                // 同组内，找到第一个比新项更旧的位置
+                if (existing.Item.SortTimeUtc < newTime)
+                    return i;
             }
             else
             {
-                // 创建新组并插入到正确的排序位置（从新到旧）
-                var newGroup = new MediaGroupViewModel(
-                    labelFormatter(year, month),
-                    new[] { tile },
-                    year, month);
-
-                var groupIdx = 0;
-                while (groupIdx < DayGroups.Count)
-                {
-                    var existing = DayGroups[groupIdx];
-                    if (existing.Year < year || (existing.Year == year && existing.Month < month))
-                        break;
-                    groupIdx++;
-                }
-                DayGroups.Insert(groupIdx, newGroup);
+                // 不同组：如果当前组的时间比新项旧，说明新项应该在这之前
+                if (existing.Item.SortTimeUtc < newTime)
+                    return i;
             }
         }
 
-        return newTiles;
+        return Tiles.Count;
     }
-
-
-    /// <summary>
-    /// 为指定的 tile 列表加载缩略图，使用共享的并发控制。
-    /// </summary>
-    private async Task LoadThumbnailsForAsync(IReadOnlyList<MediaTileViewModel> tiles)
-    {
-        var token = CancellationToken.None;
-        var tasks = tiles.Select(async tile =>
-        {
-            await _thumbGate.WaitAsync(token).ConfigureAwait(true);
-            try
-            {
-                var bmp = await _thumbs.LoadAsync(tile.Item, _mtpDevice, cancellationToken: token)
-                    .ConfigureAwait(true);
-                if (bmp is not null)
-                    tile.Thumbnail = bmp;
-            }
-            finally
-            {
-                _thumbGate.Release();
-            }
-        });
-
-        await Task.WhenAll(tasks).ConfigureAwait(true);
-    }
-
-
-    private IEnumerable<MediaTileViewModel> AllTiles() =>
-        DayGroups.SelectMany(d => d.Items);
 
     private void BrowseTargetFolder()
     {
         using var dlg = new System.Windows.Forms.FolderBrowserDialog
         {
             Description = LanguageManager.GetString("VM_BrowseFolder"),
-
             UseDescriptionForTitle = true,
         };
         if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -237,12 +245,13 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
     private async Task CopySelectedToTargetAsync()
     {
-        var selected = AllTiles().Where(t => t.IsSelected).Select(t => t.Item).ToList();
+        var selected = Tiles.Where(t => t.IsSelected).Select(t => t.Item).ToList();
         if (selected.Count == 0)
         {
-            System.Windows.MessageBox.Show(LanguageManager.GetString("VM_PleaseSelect"), LanguageManager.GetString("VM_Hint"), MessageBoxButton.OK, MessageBoxImage.Information);
-
-
+            System.Windows.MessageBox.Show(
+                LanguageManager.GetString("VM_PleaseSelect"),
+                LanguageManager.GetString("VM_Hint"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -256,13 +265,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename }).ConfigureAwait(true);
 
             var msg = LanguageManager.GetString("VM_CopyDone", result.SuccessCount, result.SkippedCount, result.FailedCount);
-
             if (result.Errors.Count > 0)
                 msg += "\n" + string.Join("\n", result.Errors.Take(5));
             System.Windows.MessageBox.Show(msg, LanguageManager.GetString("VM_CopyResult"), MessageBoxButton.OK,
-
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
-
         }
         finally
         {
@@ -272,17 +278,16 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
     private void ToggleSelectAll()
     {
-        var tiles = AllTiles().ToList();
-        if (tiles.Count == 0)
+        if (Tiles.Count == 0)
             return;
-        var allOn = tiles.All(t => t.IsSelected);
-        foreach (var t in tiles)
+        var allOn = Tiles.All(t => t.IsSelected);
+        foreach (var t in Tiles)
             t.IsSelected = !allOn;
     }
 
     public IReadOnlyList<MediaDragRecord> BuildDragRecordsForSelection()
     {
-        return AllTiles()
+        return Tiles
             .Where(t => t.IsSelected)
             .Select(t => ToRecord(t.Item))
             .ToList();
@@ -363,7 +368,6 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             sourceDevice = string.Equals(pnp, _descriptor.MtpDeviceId, StringComparison.OrdinalIgnoreCase)
                 ? _mtpDevice
                 : MtpDeviceLister.TryConnectByName(pnp);
-
         }
 
         IsBusy = true;
@@ -378,14 +382,11 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             if (sourceDevice is not null && sourceDevice != _mtpDevice)
                 sourceDevice.Disconnect();
 
-
             System.Windows.MessageBox.Show(
                 LanguageManager.GetString("VM_CopiedToTarget", CurrentDropTargetPath, result.SuccessCount, result.SkippedCount, result.FailedCount),
                 LanguageManager.GetString("VM_CopyResult"),
-
                 MessageBoxButton.OK,
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
-
         }
         finally
         {
@@ -416,7 +417,6 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             if (dev is null)
                 continue;
 
-
             var name = string.IsNullOrWhiteSpace(r.DisplayName)
                 ? Path.GetFileName(r.MtpPath.TrimEnd('\\'))
                 : r.DisplayName;
@@ -437,11 +437,16 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
             if (dev != _mtpDevice)
                 dev.Disconnect();
-
         }
 
         return paths;
     }
+
+    /// <summary>
+    /// 缩略图加载器和并发控制门，供懒加载行为使用。
+    /// </summary>
+    public ThumbnailLoader ThumbLoader => _thumbs;
+    public SemaphoreSlim ThumbGate => _thumbGate;
 
     public void Dispose()
     {

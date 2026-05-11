@@ -16,12 +16,10 @@ namespace MediaBrowser.App.Views;
 public partial class MediaWindow : Window
 {
     private System.Windows.Point _dragStart;
-
     private bool _dragPrepared;
     private readonly MediaWindowViewModel _vm;
     /// <summary>标识本窗口实例，用于检测拖拽到自身窗口的误操作。</summary>
     internal readonly string InstanceId = Guid.NewGuid().ToString("N");
-
 
     public MediaWindow(DeviceSessionDescriptor descriptor)
     {
@@ -35,7 +33,105 @@ public partial class MediaWindow : Window
                 ApplicationSession.Coordinator.NotifyMtpSessionClosed(descriptor.MtpDeviceId);
             _vm.Dispose();
         };
+
+        // 监听滚动事件，实现缩略图懒加载
+        MediaListBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(OnScrollChanged));
     }
+
+    // ── 缩略图懒加载 ──
+
+    private bool _lazyLoadScheduled;
+
+    private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (!_lazyLoadScheduled)
+        {
+            _lazyLoadScheduled = true;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                _lazyLoadScheduled = false;
+                LoadVisibleThumbnails();
+            });
+        }
+    }
+
+    /// <summary>
+    /// 扫描当前可视区域内的 tile，为尚未加载缩略图的 tile 启动异步加载。
+    /// </summary>
+    private void LoadVisibleThumbnails()
+    {
+        var scrollViewer = FindVisualChild<ScrollViewer>(MediaListBox);
+        if (scrollViewer == null) return;
+
+        var viewportTop = scrollViewer.VerticalOffset;
+        var viewportBottom = viewportTop + scrollViewer.ViewportHeight;
+
+        // 遍历所有可见的 ListBoxItem
+        for (int i = 0; i < MediaListBox.Items.Count; i++)
+        {
+            if (MediaListBox.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem container)
+                continue;
+
+            // 检查容器是否在可视区域内
+            var transform = container.TransformToAncestor(scrollViewer);
+            var topLeft = transform.Transform(new System.Windows.Point(0, 0));
+            var bottomRight = transform.Transform(new System.Windows.Point(container.ActualWidth, container.ActualHeight));
+
+            if (bottomRight.Y < 0 || topLeft.Y > scrollViewer.ViewportHeight)
+            {
+                // 不在可视区域，取消加载
+                if (container.DataContext is MediaTileViewModel offTile)
+                    offTile.CancelThumbnailLoading();
+                continue;
+            }
+
+            // 在可视区域内，启动缩略图加载
+            if (container.DataContext is MediaTileViewModel tile && tile.Thumbnail == null)
+            {
+                _ = LoadThumbnailForTileAsync(tile);
+            }
+        }
+    }
+
+    private async Task LoadThumbnailForTileAsync(MediaTileViewModel tile)
+    {
+        var cts = tile.GetOrCreateCts();
+        try
+        {
+            await _vm.ThumbGate.WaitAsync(cts.Token).ConfigureAwait(true);
+            try
+            {
+                var bmp = await _vm.ThumbLoader.LoadAsync(tile.Item, _vm.MtpDevice, cancellationToken: cts.Token)
+                    .ConfigureAwait(true);
+                if (bmp != null && !cts.Token.IsCancellationRequested)
+                    tile.Thumbnail = bmp;
+            }
+            finally
+            {
+                _vm.ThumbGate.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 加载被取消，正常情况
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T found)
+                return found;
+            var result = FindVisualChild<T>(child);
+            if (result != null)
+                return result;
+        }
+        return null;
+    }
+
+    // ── 拖放处理 ──
 
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
@@ -59,8 +155,6 @@ public partial class MediaWindow : Window
         }
     }
 
-
-
     private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
     {
         // 拖拽到自身窗口时忽略（误操作）
@@ -83,11 +177,8 @@ public partial class MediaWindow : Window
             return;
         }
 
-
-
         if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) &&
             e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] paths)
-
         {
             var items = paths
                 .Where(File.Exists)
@@ -107,10 +198,10 @@ public partial class MediaWindow : Window
                     mtpDevice: null,
                     new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename })
                 .ConfigureAwait(true);
-            System.Windows.MessageBox.Show(LanguageManager.GetString("VM_ExternalDropDone"), LanguageManager.GetString("VM_Done"), MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
-
+            System.Windows.MessageBox.Show(
+                LanguageManager.GetString("VM_ExternalDropDone"),
+                LanguageManager.GetString("VM_Done"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
             e.Handled = true;
         }
     }
@@ -128,7 +219,6 @@ public partial class MediaWindow : Window
         _dragPrepared = false;
 
     private async void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-
     {
         if (!_dragPrepared || e.LeftButton != MouseButtonState.Pressed)
             return;
@@ -157,16 +247,13 @@ public partial class MediaWindow : Window
         data.SetData(InternalDragFormats.SourceWindowId, InstanceId);
         data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
 
-
-        var paths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
-        if (paths.Count > 0)
-            data.SetData(System.Windows.DataFormats.FileDrop, paths.ToArray(), autoConvert: true);
-
+        var shellPaths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
+        if (shellPaths.Count > 0)
+            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
 
         try
         {
             DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
-
         }
         catch
         {
