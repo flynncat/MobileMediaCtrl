@@ -2,55 +2,55 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
   <!-- MainWindow -->
-  <sys:String x:Key="MainWindow_Title">�����ý�����</sys:String>
-  <sys:String x:Key="MainWindow_Running">�����������С�</sys:String>
-  <sys:String x:Key="MainWindow_Hint1">���� U �̻����ֻ����ӵ��Բ�ѡ���ļ����䡹�󣬽��Զ�����������ڡ�</sys:String>
-  <sys:String x:Key="MainWindow_Hint2">��Ҳ������С�������ڣ�������Ӱ���Զ�������</sys:String>
-  <sys:String x:Key="MainWindow_Settings">����</sys:String>
+  <sys:String x:Key="MainWindow_Title">外接媒体浏览器</sys:String>
+  <sys:String x:Key="MainWindow_Running">应用程序运行中。</sys:String>
+  <sys:String x:Key="MainWindow_Hint1">插入 U 盘或连接手机并选择"文件传输"模式，将自动弹出浏览窗口。</sys:String>
+  <sys:String x:Key="MainWindow_Hint2">可以最小化此窗口，不影响自动弹出功能。</sys:String>
+  <sys:String x:Key="MainWindow_Settings">设置</sys:String>
 
   <!-- MediaWindow -->
-  <sys:String x:Key="Media_CopyToFolder">���Ƶ��ļ��У�</sys:String>
-  <sys:String x:Key="Media_Browse">�����</sys:String>
-  <sys:String x:Key="Media_Refresh">ˢ���б�</sys:String>
-  <sys:String x:Key="Media_CopySelected">������ѡ��Ŀ���ļ���</sys:String>
-  <sys:String x:Key="Media_ToggleSelectAll">ȫѡ/ȡ��ȫѡ</sys:String>
-  <sys:String x:Key="Media_Hint">��ʾ����ѡ����ϵ�����/�ļ��У�˫����Ԥ����</sys:String>
-  <sys:String x:Key="Media_Select">ѡ��</sys:String>
+  <sys:String x:Key="Media_CopyToFolder">复制到文件夹：</sys:String>
+  <sys:String x:Key="Media_Browse">浏览...</sys:String>
+  <sys:String x:Key="Media_Refresh">刷新列表</sys:String>
+  <sys:String x:Key="Media_CopySelected">复制已选到目标文件夹</sys:String>
+  <sys:String x:Key="Media_ToggleSelectAll">全选/取消全选</sys:String>
+  <sys:String x:Key="Media_Hint">提示：勾选文件后可拖拽到桌面/文件夹；双击可预览。</sys:String>
+  <sys:String x:Key="Media_Select">选择</sys:String>
 
   <!-- PreviewWindow -->
-  <sys:String x:Key="Preview_Title">Ԥ��</sys:String>
-  <sys:String x:Key="Preview_Loading">���ڼ���Ԥ����</sys:String>
-  <sys:String x:Key="Preview_PlayPause">��ͣ/����</sys:String>
-  <sys:String x:Key="Preview_Close">�ر�</sys:String>
-  <sys:String x:Key="Preview_CannotPreview">�޷�Ԥ�����ļ���</sys:String>
-  <sys:String x:Key="Preview_Failed">Ԥ��ʧ�ܣ�{0}</sys:String>
+  <sys:String x:Key="Preview_Title">预览</sys:String>
+  <sys:String x:Key="Preview_Loading">正在加载预览...</sys:String>
+  <sys:String x:Key="Preview_PlayPause">暂停/播放</sys:String>
+  <sys:String x:Key="Preview_Close">关闭</sys:String>
+  <sys:String x:Key="Preview_CannotPreview">无法预览此文件。</sys:String>
+  <sys:String x:Key="Preview_Failed">预览失败：{0}</sys:String>
 
   <!-- SettingsWindow -->
-  <sys:String x:Key="Settings_Title">����</sys:String>
-  <sys:String x:Key="Settings_Language">���ԣ�</sys:String>
-  <sys:String x:Key="Settings_Save">����</sys:String>
-  <sys:String x:Key="Settings_RestartHint">�����л������������ȫ��Ч��</sys:String>
+  <sys:String x:Key="Settings_Title">设置</sys:String>
+  <sys:String x:Key="Settings_Language">语言：</sys:String>
+  <sys:String x:Key="Settings_Save">保存</sys:String>
+  <sys:String x:Key="Settings_RestartHint">切换语言后部分内容需重启应用才能完全生效。</sys:String>
 
-  <!-- ViewModel / Code-behind �ַ��� -->
-  <sys:String x:Key="VM_Loading">���ڼ��ء�</sys:String>
-  <sys:String x:Key="VM_DeviceNotFound">δ�ҵ��ֻ�/��Я�豸�����������ӡ�</sys:String>
-  <sys:String x:Key="VM_MediaCount">�� {0} ��ý���ļ���·����Ϊ����Ŀ�ꡣ</sys:String>
-  <sys:String x:Key="VM_LoadFailed">����ʧ�ܣ�{0}</sys:String>
-  <sys:String x:Key="VM_BrowseFolder">ѡ����Ŀ���ļ���</sys:String>
-  <sys:String x:Key="VM_PleaseSelect">���ȹ�ѡҪ���Ƶ��ļ���</sys:String>
-  <sys:String x:Key="VM_Hint">��ʾ</sys:String>
-  <sys:String x:Key="VM_CopyResult">���ƽ��</sys:String>
-  <sys:String x:Key="VM_CopyDone">��ɣ��ɹ� {0}������ {1}��ʧ�� {2}��</sys:String>
-  <sys:String x:Key="VM_CopiedToTarget">�Ѹ��Ƶ���ǰ·����Ŀ¼��&#x0a;{0}&#x0a;�ɹ� {1}������ {2}��ʧ�� {3}��</sys:String>
-  <sys:String x:Key="VM_ExternalDropDone">�ѽ����ⲿ������ļ����Ƶ���ǰ·����Ŀ¼��</sys:String>
-  <sys:String x:Key="VM_Done">���</sys:String>
+  <!-- ViewModel / Code-behind 使用的字符串 -->
+  <sys:String x:Key="VM_Loading">正在加载...</sys:String>
+  <sys:String x:Key="VM_DeviceNotFound">未找到手机/便携设备，请重新连接。</sys:String>
+  <sys:String x:Key="VM_MediaCount">共 {0} 个媒体文件。路径栏即为复制目标。</sys:String>
+  <sys:String x:Key="VM_LoadFailed">加载失败：{0}</sys:String>
+  <sys:String x:Key="VM_BrowseFolder">选择复制目标文件夹</sys:String>
+  <sys:String x:Key="VM_PleaseSelect">请先勾选要复制的文件。</sys:String>
+  <sys:String x:Key="VM_Hint">提示</sys:String>
+  <sys:String x:Key="VM_CopyResult">复制结果</sys:String>
+  <sys:String x:Key="VM_CopyDone">完成：成功 {0}，跳过 {1}，失败 {2}。</sys:String>
+  <sys:String x:Key="VM_CopiedToTarget">已复制到目标文件夹：&#x0a;{0}&#x0a;成功 {1}，跳过 {2}，失败 {3}。</sys:String>
+  <sys:String x:Key="VM_ExternalDropDone">外部文件已复制到目标文件夹。</sys:String>
+  <sys:String x:Key="VM_Done">完成</sys:String>
 
-  <!-- MTP ɨ�� -->
-  <sys:String x:Key="Mtp_FoundVolumes">���� {0} ���洢�����ʼɨ�衭</sys:String>
-  <sys:String x:Key="Mtp_Scanning">����ɨ�� {0}�������ҵ� {1} ���ļ���</sys:String>
-  <sys:String x:Key="Mtp_ScanDone">ɨ����ɣ��� {0} ��ý���ļ���</sys:String>
-  <sys:String x:Key="Mtp_FoundFiles">���ҵ� {0} ��ý���ļ���</sys:String>
+  <!-- MTP 扫描 -->
+  <sys:String x:Key="Mtp_FoundVolumes">发现 {0} 个存储卷，正在扫描</sys:String>
+  <sys:String x:Key="Mtp_Scanning">正在扫描 {0}……已发现 {1} 个文件</sys:String>
+  <sys:String x:Key="Mtp_ScanDone">扫描完成，共 {0} 个媒体文件。</sys:String>
+  <sys:String x:Key="Mtp_FoundFiles">已发现 {0} 个媒体文件...</sys:String>
 
   <!-- DeviceArrival -->
-  <sys:String x:Key="Device_UsbDrive">U �� ({0})</sys:String>
+  <sys:String x:Key="Device_UsbDrive">U 盘 ({0})</sys:String>
 </ResourceDictionary>
