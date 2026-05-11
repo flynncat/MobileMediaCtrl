@@ -14,7 +14,9 @@
   <sys:String x:Key="Media_Refresh">Refresh</sys:String>
   <sys:String x:Key="Media_CopySelected">Copy Selected to Target</sys:String>
   <sys:String x:Key="Media_ToggleSelectAll">Select All / Deselect</sys:String>
+  <sys:String x:Key="Media_OpenExportFolder">Open Export Folder</sys:String>
   <sys:String x:Key="Media_Hint">Tip: Check files then drag to desktop/folder; double-click to preview.</sys:String>
+
   <sys:String x:Key="Media_Select">Select</sys:String>
 
   <!-- PreviewWindow -->
@@ -44,6 +46,10 @@
   <sys:String x:Key="VM_CopiedToTarget">Copied to target folder:&#x0a;{0}&#x0a;{1} succeeded, {2} skipped, {3} failed.</sys:String>
   <sys:String x:Key="VM_ExternalDropDone">External files have been copied to the target folder.</sys:String>
   <sys:String x:Key="VM_Done">Done</sys:String>
+  <sys:String x:Key="VM_ExportFolderNotExist">Export folder does not exist. Please set a valid target path first.</sys:String>
+  <sys:String x:Key="VM_OpenFolderFailed">Failed to open folder: {0}</sys:String>
+  <sys:String x:Key="VM_PreparingDrag">Preparing files, please wait...</sys:String>
+
 
   <!-- MTP Scan -->
   <sys:String x:Key="Mtp_FoundVolumes">Found {0} storage volumes, scanning...</sys:String>

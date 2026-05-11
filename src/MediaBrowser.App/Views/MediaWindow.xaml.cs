@@ -247,9 +247,30 @@ public partial class MediaWindow : Window
         data.SetData(InternalDragFormats.SourceWindowId, InstanceId);
         data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
 
-        var shellPaths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
-        if (shellPaths.Count > 0)
-            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+        if (_vm.IsFileSystemDevice)
+        {
+            // 文件系统设备：直接使用文件路径，零延迟
+            var shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
+            if (shellPaths.Count > 0)
+                data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+        }
+        else
+        {
+            // MTP设备：需要先下载到临时目录
+            // 使用状态提示告知用户正在准备文件
+            var originalStatus = _vm.StatusText;
+            _vm.StatusText = LanguageManager.GetString("VM_PreparingDrag");
+            try
+            {
+                var shellPaths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
+                if (shellPaths.Count > 0)
+                    data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+            }
+            finally
+            {
+                _vm.StatusText = originalStatus;
+            }
+        }
 
         try
         {
@@ -260,6 +281,7 @@ public partial class MediaWindow : Window
             // 忽略拖放被取消
         }
     }
+
 
     /// <summary>双击缩略图卡片时打开预览窗口。</summary>
     private async void Tile_MouseDoubleClick(object sender, MouseButtonEventArgs e)

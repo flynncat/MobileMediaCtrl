@@ -47,6 +47,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         RefreshCommand = new RelayCommand(_ => _ = LoadAsync());
         CopySelectedToTargetCommand = new RelayCommand(_ => _ = CopySelectedToTargetAsync(), _ => !IsBusy);
         ToggleSelectAllCommand = new RelayCommand(_ => ToggleSelectAll());
+        OpenExportFolderCommand = new RelayCommand(_ => OpenExportFolder());
+
 
         // 配置 CollectionViewSource 分组
         var cvs = new CollectionViewSource { Source = Tiles };
@@ -88,6 +90,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     public ICommand RefreshCommand { get; }
     public ICommand CopySelectedToTargetCommand { get; }
     public ICommand ToggleSelectAllCommand { get; }
+    public ICommand OpenExportFolderCommand { get; }
+
 
     public async Task LoadAsync()
     {
@@ -251,6 +255,36 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             CurrentDropTargetPath = dlg.SelectedPath;
     }
 
+    private void OpenExportFolder()
+    {
+        var path = CurrentDropTargetPath;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            System.Windows.MessageBox.Show(
+                LanguageManager.GetString("VM_ExportFolderNotExist"),
+                LanguageManager.GetString("VM_Hint"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                LanguageManager.GetString("VM_OpenFolderFailed", ex.Message),
+                LanguageManager.GetString("VM_Hint"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+
     private async Task CopySelectedToTargetAsync()
     {
         var selected = Tiles.Where(t => t.IsSelected).Select(t => t.Item).ToList();
@@ -402,6 +436,24 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// 为文件系统设备快速构建拖拽路径列表（无需下载，零延迟）。
+    /// </summary>
+    public IReadOnlyList<string> BuildShellDragPathsForFileSystem(IReadOnlyList<MediaDragRecord> records)
+    {
+        var paths = new List<string>();
+        foreach (var r in records)
+        {
+            if (r.Kind == "fs" && !string.IsNullOrEmpty(r.FsPath) && File.Exists(r.FsPath))
+                paths.Add(r.FsPath!);
+        }
+        return paths;
+    }
+
+    /// <summary>
+    /// 为MTP设备下载文件到临时目录以支持Shell拖拽。
+    /// 在后台线程执行以避免阻塞UI。
+    /// </summary>
     public async Task<IReadOnlyList<string>> StageFilesForShellDragAsync(IReadOnlyList<MediaDragRecord> records)
     {
         var paths = new List<string>();
@@ -410,7 +462,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
         foreach (var r in records)
         {
-            if (r.Kind == "fs" && File.Exists(r.FsPath))
+            if (r.Kind == "fs" && !string.IsNullOrEmpty(r.FsPath) && File.Exists(r.FsPath))
             {
                 paths.Add(r.FsPath!);
                 continue;
@@ -440,7 +492,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             }
             catch
             {
-                // ignore single failure
+                // 忽略单个文件失败
             }
 
             if (dev != _mtpDevice)
@@ -449,6 +501,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
         return paths;
     }
+
+    /// <summary>
+    /// 判断当前设备是否为文件系统设备（可直接使用文件路径拖拽）。
+    /// </summary>
+    public bool IsFileSystemDevice => _descriptor.Kind == DeviceKind.RemovableVolume;
+
 
     /// <summary>
     /// 缩略图加载器和并发控制门，供懒加载行为使用。

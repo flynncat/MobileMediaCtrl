@@ -14,7 +14,9 @@
   <sys:String x:Key="Media_Refresh">刷新列表</sys:String>
   <sys:String x:Key="Media_CopySelected">复制已选到目标文件夹</sys:String>
   <sys:String x:Key="Media_ToggleSelectAll">全选/取消全选</sys:String>
+  <sys:String x:Key="Media_OpenExportFolder">打开导出文件夹</sys:String>
   <sys:String x:Key="Media_Hint">提示：勾选文件后可拖拽到桌面/文件夹；双击可预览。</sys:String>
+
   <sys:String x:Key="Media_Select">选择</sys:String>
 
   <!-- PreviewWindow -->
@@ -44,6 +46,10 @@
   <sys:String x:Key="VM_CopiedToTarget">已复制到目标文件夹：&#x0a;{0}&#x0a;成功 {1}，跳过 {2}，失败 {3}。</sys:String>
   <sys:String x:Key="VM_ExternalDropDone">外部文件已复制到目标文件夹。</sys:String>
   <sys:String x:Key="VM_Done">完成</sys:String>
+  <sys:String x:Key="VM_ExportFolderNotExist">导出文件夹不存在，请先设置有效的目标路径。</sys:String>
+  <sys:String x:Key="VM_OpenFolderFailed">打开文件夹失败：{0}</sys:String>
+  <sys:String x:Key="VM_PreparingDrag">正在准备文件，请稍候...</sys:String>
+
 
   <!-- MTP 扫描 -->
   <sys:String x:Key="Mtp_FoundVolumes">发现 {0} 个存储卷，正在扫描</sys:String>
