@@ -22,7 +22,47 @@ public static class MtpMediaCatalog
         // 使用 FriendlyName 作为设备标识（与 DeviceSessionDescriptor.MtpDeviceId 一致）
         var deviceName = device.FriendlyName ?? "";
 
-        foreach (var path in device.EnumerateFiles(@"\", "*.*", SearchOption.AllDirectories))
+        // MTP 设备的根目录 "\" 下是存储卷（如 "Internal shared storage"），
+        // 不能直接对 "\" 调用 EnumerateFiles，否则会抛出 COMException 0x80042009。
+        // 需要先获取存储根目录列表，再逐个枚举。
+        IEnumerable<string> storageRoots;
+        try
+        {
+            storageRoots = device.EnumerateDirectories(@"\");
+        }
+        catch
+        {
+            return list;
+        }
+
+        foreach (var storageRoot in storageRoots)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            EnumerateStorage(device, storageRoot, deviceName, list, cancellationToken);
+        }
+
+        return list;
+    }
+
+    private static void EnumerateStorage(
+        MediaDevice device,
+        string storagePath,
+        string deviceName,
+        List<MediaItem> list,
+        CancellationToken cancellationToken)
+    {
+        IEnumerable<string> files;
+        try
+        {
+            files = device.EnumerateFiles(storagePath, "*.*", SearchOption.AllDirectories);
+        }
+        catch
+        {
+            // 某些存储卷可能无法访问（如只读分区），跳过
+            return;
+        }
+
+        foreach (var path in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!MediaExtensionLists.IsMediaFile(path))
@@ -31,7 +71,7 @@ public static class MtpMediaCatalog
             try
             {
                 var fi = device.GetFileInfo(path);
-                var folder = fi.Directory?.FullName ?? @"\";
+                var folder = fi.Directory?.FullName ?? storagePath;
                 var sortUtc = SafeLastWriteUtc(fi);
 
                 list.Add(new MediaItem
@@ -45,16 +85,14 @@ public static class MtpMediaCatalog
                     MtpDeviceId = deviceName,
                     MtpObjectId = path,
                 });
-
             }
             catch
             {
                 // 单文件失败时跳过
             }
         }
-
-        return list;
     }
+
 
     private static DateTime SafeLastWriteUtc(MediaFileInfo fi)
     {
