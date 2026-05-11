@@ -13,7 +13,8 @@ namespace MediaBrowser.App.Views;
 
 public partial class MediaWindow : Window
 {
-    private Point _dragStart;
+    private System.Windows.Point _dragStart;
+
     private bool _dragPrepared;
     private readonly MediaWindowViewModel _vm;
 
@@ -31,17 +32,19 @@ public partial class MediaWindow : Window
         };
     }
 
-    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
         if (e.Data.GetDataPresent(InternalDragFormats.MediaItems) ||
-            e.Data.GetDataPresent(DataFormats.FileDrop))
+            e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
-            e.Effects = DragDropEffects.Copy;
+            e.Effects = System.Windows.DragDropEffects.Copy;
+
             e.Handled = true;
         }
     }
 
-    private async void Window_PreviewDrop(object sender, DragEventArgs e)
+
+    private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
     {
         if (e.Data.GetDataPresent(InternalDragFormats.MediaItems))
         {
@@ -52,8 +55,10 @@ public partial class MediaWindow : Window
             return;
         }
 
-        if (e.Data.GetDataPresent(DataFormats.FileDrop) &&
-            e.Data.GetData(DataFormats.FileDrop) is string[] paths)
+
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) &&
+            e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] paths)
+
         {
             var items = paths
                 .Where(File.Exists)
@@ -73,8 +78,9 @@ public partial class MediaWindow : Window
                     mtpDevice: null,
                     new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename })
                 .ConfigureAwait(true);
-            MessageBox.Show("已将从外部拖入的文件复制到当前路径栏目录。", "完成", MessageBoxButton.OK,
+            System.Windows.MessageBox.Show("已将从外部拖入的文件复制到当前路径栏目录。", "完成", MessageBoxButton.OK,
                 MessageBoxImage.Information);
+
             e.Handled = true;
         }
     }
@@ -91,7 +97,8 @@ public partial class MediaWindow : Window
     private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
         _dragPrepared = false;
 
-    private async void Tile_PreviewMouseMove(object sender, MouseEventArgs e)
+    private async void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+
     {
         if (!_dragPrepared || e.LeftButton != MouseButtonState.Pressed)
             return;
@@ -114,16 +121,19 @@ public partial class MediaWindow : Window
             records = _vm.BuildDragRecords(new[] { tile.Item });
         }
 
-        var data = new DataObject();
+        var data = new System.Windows.DataObject();
+
         data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
 
         var paths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
         if (paths.Count > 0)
-            data.SetData(DataFormats.FileDrop, paths.ToArray(), autoConvert: true);
+            data.SetData(System.Windows.DataFormats.FileDrop, paths.ToArray(), autoConvert: true);
+
 
         try
         {
-            DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy);
+            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
+
         }
         catch
         {
@@ -135,7 +145,8 @@ public partial class MediaWindow : Window
     {
         while (src is not null)
         {
-            if (src is CheckBox)
+            if (src is System.Windows.Controls.CheckBox)
+
                 return true;
             src = VisualTreeHelper.GetParent(src);
         }

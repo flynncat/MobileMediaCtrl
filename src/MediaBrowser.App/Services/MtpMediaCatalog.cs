@@ -1,6 +1,8 @@
-﻿using MediaBrowser.Core.MediaFormats;
+﻿using System.IO;
+using MediaBrowser.Core.MediaFormats;
 using MediaBrowser.Core.Models;
 using MediaDevices;
+
 
 namespace MediaBrowser.App.Services;
 
@@ -56,7 +58,8 @@ public static class MtpMediaCatalog
     {
         try
         {
-            return fi.LastWriteTime.ToUniversalTime();
+            return fi.LastWriteTime?.ToUniversalTime() ?? DateTime.UtcNow;
+
         }
         catch
         {

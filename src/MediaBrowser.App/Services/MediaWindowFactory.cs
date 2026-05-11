@@ -24,9 +24,10 @@ public static class MediaWindowFactory
             win.Show();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
+        if (System.Windows.Application.Current?.Dispatcher.CheckAccess() == true)
             Open();
         else
-            Application.Current?.Dispatcher.Invoke(Open);
+            System.Windows.Application.Current?.Dispatcher.Invoke(Open);
+
     }
 }

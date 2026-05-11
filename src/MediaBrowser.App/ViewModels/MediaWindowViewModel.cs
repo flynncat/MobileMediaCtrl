@@ -1,8 +1,10 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
+
 using MediaBrowser.App.Infrastructure;
 using MediaBrowser.App.Services;
 using MediaBrowser.Core.Catalog;
@@ -154,7 +156,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         var selected = AllTiles().Where(t => t.IsSelected).Select(t => t.Item).ToList();
         if (selected.Count == 0)
         {
-            MessageBox.Show("请先勾选要复制的文件。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show("请先勾选要复制的文件。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+
             return;
         }
 
@@ -171,8 +174,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 $"完成：成功 {result.SuccessCount}，跳过 {result.SkippedCount}，失败 {result.FailedCount}。";
             if (result.Errors.Count > 0)
                 msg += "\n" + string.Join("\n", result.Errors.Take(5));
-            MessageBox.Show(msg, "复制结果", MessageBoxButton.OK,
+            System.Windows.MessageBox.Show(msg, "复制结果", MessageBoxButton.OK,
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+
         }
         finally
         {
@@ -289,11 +293,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 !string.Equals(sourceDevice.PnPDeviceID, _descriptor.MtpDeviceId, StringComparison.Ordinal))
                 sourceDevice.Disconnect();
 
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"已复制到当前路径栏目录：\n{CurrentDropTargetPath}\n成功 {result.SuccessCount}，跳过 {result.SkippedCount}，失败 {result.FailedCount}。",
                 "复制结果",
                 MessageBoxButton.OK,
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+
         }
         finally
         {
