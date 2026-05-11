@@ -137,18 +137,22 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                             // 延迟 100ms 合并批次
                             _dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
                             {
-                                List<MediaItem> toProcess;
+                                List<MediaItem>? toProcess;
                                 lock (_batchLock)
                                 {
-                                    toProcess = _pendingBatch!;
+                                    toProcess = _pendingBatch;
                                     _pendingBatch = null;
                                     _batchScheduled = false;
                                 }
+
+                                if (toProcess is null or { Count: 0 })
+                                    return;
 
                                 AddItemsToFlatList(toProcess);
                                 _totalItemCount += toProcess.Count;
                                 StatusText = LanguageManager.GetString("VM_Scanning", _totalItemCount);
                             });
+
                         }
                     }
                 };
@@ -188,8 +192,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void AddItemsToFlatList(IEnumerable<MediaItem> items)
     {
+        if (items is null)
+            return;
+
         Func<int, int, string> labelFormatter = (y, m) =>
             LanguageManager.GetString("Group_MonthFormat", y, m);
+
 
         foreach (var item in items)
         {

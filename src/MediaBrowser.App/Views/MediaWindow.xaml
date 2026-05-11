@@ -80,15 +80,9 @@
                          Foreground="#333"/>
             </DataTemplate>
           </GroupStyle.HeaderTemplate>
-          <GroupStyle.Panel>
-            <ItemsPanelTemplate>
-              <vwp:VirtualizingWrapPanel Orientation="Horizontal"
-                                          SpacingMode="Uniform"
-                                          StretchItems="False"/>
-            </ItemsPanelTemplate>
-          </GroupStyle.Panel>
         </GroupStyle>
       </ListBox.GroupStyle>
+
 
       <!-- 隐藏 ListBox 默认选中样式，使用自定义 CheckBox -->
       <ListBox.ItemContainerStyle>
