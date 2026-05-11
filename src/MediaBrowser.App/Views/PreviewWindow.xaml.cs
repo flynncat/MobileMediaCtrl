@@ -1,4 +1,4 @@
-using System.IO;
+ï»¿using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
@@ -6,24 +6,28 @@ using MediaBrowser.App.Services;
 using MediaBrowser.Core.Models;
 using MediaDevices;
 
+
 namespace MediaBrowser.App.Views;
 
 public partial class PreviewWindow : Window
 {
     private string? _tempFilePath;
+
+
+    public new string Title { get; set; } = "";
+
     private bool _isPlaying;
-
-    public new string Title { get; set; } = "Ô¤ÀÀ";
-
 
     public PreviewWindow()
     {
         InitializeComponent();
+        Title = LanguageManager.GetString("Preview_Title");
         DataContext = this;
     }
 
+
     /// <summary>
-    /// ¼ÓÔØ²¢Ô¤ÀÀÖ¸¶¨µÄÃ½ÌåÏî¡£
+    /// åŠ è½½å¹¶é¢„è§ˆæŒ‡å®šçš„åª’ä½“é¡¹ã€‚
     /// </summary>
     public async Task LoadMediaAsync(MediaItem item, MediaDevice? mtpDevice)
     {
@@ -40,7 +44,7 @@ public partial class PreviewWindow : Window
             }
             else if (item.SourceKind == MediaSourceKind.Mtp && mtpDevice != null && !string.IsNullOrEmpty(item.MtpObjectId))
             {
-                // ´ÓMTPÉè±¸ÏÂÔØµ½ÁÙÊ±ÎÄ¼ş
+                // ä»MTPè®¾å¤‡ä¸‹è½½åˆ°ä¸´æ—¶æ–‡ä»¶
                 var tempDir = Path.Combine(Path.GetTempPath(), "MediaBrowserPreview");
                 Directory.CreateDirectory(tempDir);
                 filePath = Path.Combine(tempDir, item.DisplayName);
@@ -54,7 +58,8 @@ public partial class PreviewWindow : Window
             }
             else
             {
-                LoadingText.Text = "ÎŞ·¨Ô¤ÀÀ´ËÎÄ¼ş¡£";
+                LoadingText.Text = LanguageManager.GetString("Preview_CannotPreview");
+
                 return;
             }
 
@@ -69,7 +74,8 @@ public partial class PreviewWindow : Window
         }
         catch (Exception ex)
         {
-            LoadingText.Text = $"Ô¤ÀÀÊ§°Ü£º{ex.Message}";
+            LoadingText.Text = LanguageManager.GetString("Preview_Failed", ex.Message);
+
         }
     }
 
@@ -140,7 +146,7 @@ public partial class PreviewWindow : Window
         VideoPlayer.Stop();
         VideoPlayer.Source = null;
 
-        // ÇåÀíÁÙÊ±ÎÄ¼ş
+        // æ¸…ç†ä¸´æ—¶æ–‡ä»¶
         if (_tempFilePath != null)
         {
             try { File.Delete(_tempFilePath); } catch { }
@@ -151,6 +157,6 @@ public partial class PreviewWindow : Window
 
     private void OnPropertyChanged(string propertyName)
     {
-        // ¼òµ¥Í¨Öª±êÌâ¸üĞÂ
+        // ç®€å•é€šçŸ¥æ ‡é¢˜æ›´æ–°
     }
 }

@@ -1,0 +1,56 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <!-- MainWindow -->
+  <sys:String x:Key="MainWindow_Title">External Media Browser</sys:String>
+  <sys:String x:Key="MainWindow_Running">Application is running.</sys:String>
+  <sys:String x:Key="MainWindow_Hint1">Insert a USB drive or connect your phone and select "File Transfer" to automatically open the browser window.</sys:String>
+  <sys:String x:Key="MainWindow_Hint2">You can minimize this window; it won't affect the auto-open feature.</sys:String>
+  <sys:String x:Key="MainWindow_Settings">Settings</sys:String>
+
+  <!-- MediaWindow -->
+  <sys:String x:Key="Media_CopyToFolder">Copy to folder:</sys:String>
+  <sys:String x:Key="Media_Browse">Browse...</sys:String>
+  <sys:String x:Key="Media_Refresh">Refresh</sys:String>
+  <sys:String x:Key="Media_CopySelected">Copy Selected to Target</sys:String>
+  <sys:String x:Key="Media_ToggleSelectAll">Select All / Deselect</sys:String>
+  <sys:String x:Key="Media_Hint">Tip: Check files then drag to desktop/folder; double-click to preview.</sys:String>
+  <sys:String x:Key="Media_Select">Select</sys:String>
+
+  <!-- PreviewWindow -->
+  <sys:String x:Key="Preview_Title">Preview</sys:String>
+  <sys:String x:Key="Preview_Loading">Loading preview...</sys:String>
+  <sys:String x:Key="Preview_PlayPause">Pause/Play</sys:String>
+  <sys:String x:Key="Preview_Close">Close</sys:String>
+  <sys:String x:Key="Preview_CannotPreview">Cannot preview this file.</sys:String>
+  <sys:String x:Key="Preview_Failed">Preview failed: {0}</sys:String>
+
+  <!-- SettingsWindow -->
+  <sys:String x:Key="Settings_Title">Settings</sys:String>
+  <sys:String x:Key="Settings_Language">Language:</sys:String>
+  <sys:String x:Key="Settings_Save">Save</sys:String>
+  <sys:String x:Key="Settings_RestartHint">Language changes will take full effect after restart.</sys:String>
+
+  <!-- ViewModel / Code-behind strings -->
+  <sys:String x:Key="VM_Loading">Loading...</sys:String>
+  <sys:String x:Key="VM_DeviceNotFound">Phone/portable device not found. Please reconnect.</sys:String>
+  <sys:String x:Key="VM_MediaCount">{0} media files found. Path bar is the copy target.</sys:String>
+  <sys:String x:Key="VM_LoadFailed">Load failed: {0}</sys:String>
+  <sys:String x:Key="VM_BrowseFolder">Select target folder for copy</sys:String>
+  <sys:String x:Key="VM_PleaseSelect">Please check the files to copy first.</sys:String>
+  <sys:String x:Key="VM_Hint">Info</sys:String>
+  <sys:String x:Key="VM_CopyResult">Copy Result</sys:String>
+  <sys:String x:Key="VM_CopyDone">Done: {0} succeeded, {1} skipped, {2} failed.</sys:String>
+  <sys:String x:Key="VM_CopiedToTarget">Copied to target folder:&#x0a;{0}&#x0a;{1} succeeded, {2} skipped, {3} failed.</sys:String>
+  <sys:String x:Key="VM_ExternalDropDone">External files have been copied to the target folder.</sys:String>
+  <sys:String x:Key="VM_Done">Done</sys:String>
+
+  <!-- MTP Scan -->
+  <sys:String x:Key="Mtp_FoundVolumes">Found {0} storage volumes, scanning...</sys:String>
+  <sys:String x:Key="Mtp_Scanning">Scanning {0}... ({1} files found)</sys:String>
+  <sys:String x:Key="Mtp_ScanDone">Scan complete, {0} media files found.</sys:String>
+  <sys:String x:Key="Mtp_FoundFiles">{0} media files found...</sys:String>
+
+  <!-- DeviceArrival -->
+  <sys:String x:Key="Device_UsbDrive">USB Drive ({0})</sys:String>
+</ResourceDictionary>

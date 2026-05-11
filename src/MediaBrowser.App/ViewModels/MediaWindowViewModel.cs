@@ -23,7 +23,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     public MediaDevice? MtpDevice => _mtpDevice;
 
     private string _currentDropTargetPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-    private string _statusText = "正在加载…";
+    private string _statusText = LanguageManager.GetString("VM_Loading");
+
     private bool _isBusy;
 
     public MediaWindowViewModel(DeviceSessionDescriptor descriptor)
@@ -70,7 +71,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     public async Task LoadAsync()
     {
         IsBusy = true;
-        StatusText = "正在加载…";
+        StatusText = LanguageManager.GetString("VM_Loading");
+
         DayGroups.Clear();
 
         try
@@ -89,7 +91,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 _mtpDevice = MtpDeviceLister.TryConnectByName(_descriptor.MtpDeviceId!);
                 if (_mtpDevice is null)
                 {
-                    StatusText = "未找到手机/便携设备，请重新连接。";
+                    StatusText = LanguageManager.GetString("VM_DeviceNotFound");
+
                     return;
                 }
 
@@ -107,12 +110,14 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 DayGroups.Add(new DayGroupViewModel(g.DateLabel, tiles));
             }
 
-            StatusText = $"共 {items.Count} 个媒体文件。路径栏为复制目标。";
+            StatusText = LanguageManager.GetString("VM_MediaCount", items.Count);
+
             _ = LoadThumbnailsAsync();
         }
         catch (Exception ex)
         {
-            StatusText = $"加载失败：{ex.Message}";
+            StatusText = LanguageManager.GetString("VM_LoadFailed", ex.Message);
+
         }
         finally
         {
@@ -150,7 +155,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     {
         using var dlg = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "选择复制目标文件夹",
+            Description = LanguageManager.GetString("VM_BrowseFolder"),
+
             UseDescriptionForTitle = true,
         };
         if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -162,7 +168,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         var selected = AllTiles().Where(t => t.IsSelected).Select(t => t.Item).ToList();
         if (selected.Count == 0)
         {
-            System.Windows.MessageBox.Show("请先勾选要复制的文件。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show(LanguageManager.GetString("VM_PleaseSelect"), LanguageManager.GetString("VM_Hint"), MessageBoxButton.OK, MessageBoxImage.Information);
+
 
             return;
         }
@@ -176,11 +183,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 _mtpDevice,
                 new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename }).ConfigureAwait(true);
 
-            var msg =
-                $"完成：成功 {result.SuccessCount}，跳过 {result.SkippedCount}，失败 {result.FailedCount}。";
+            var msg = LanguageManager.GetString("VM_CopyDone", result.SuccessCount, result.SkippedCount, result.FailedCount);
+
             if (result.Errors.Count > 0)
                 msg += "\n" + string.Join("\n", result.Errors.Take(5));
-            System.Windows.MessageBox.Show(msg, "复制结果", MessageBoxButton.OK,
+            System.Windows.MessageBox.Show(msg, LanguageManager.GetString("VM_CopyResult"), MessageBoxButton.OK,
+
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
         }
@@ -300,8 +308,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
 
 
             System.Windows.MessageBox.Show(
-                $"已复制到当前路径栏目录：\n{CurrentDropTargetPath}\n成功 {result.SuccessCount}，跳过 {result.SkippedCount}，失败 {result.FailedCount}。",
-                "复制结果",
+                LanguageManager.GetString("VM_CopiedToTarget", CurrentDropTargetPath, result.SuccessCount, result.SkippedCount, result.FailedCount),
+                LanguageManager.GetString("VM_CopyResult"),
+
                 MessageBoxButton.OK,
                 result.FailedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
 

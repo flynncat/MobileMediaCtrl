@@ -83,7 +83,8 @@ public sealed class DeviceArrivalCoordinator : IDisposable
                 SessionKey = key,
                 Kind = DeviceKind.RemovableVolume,
                 VolumeRootPath = root,
-                DisplayName = $"U 盘 ({drive.Name.TrimEnd('\\')})",
+                DisplayName = LanguageManager.GetString("Device_UsbDrive", drive.Name.TrimEnd('\\')),
+
             };
             MediaWindowFactory.OpenForDevice(desc);
         }

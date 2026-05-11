@@ -1,0 +1,56 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <!-- MainWindow -->
+  <sys:String x:Key="MainWindow_Title">�����ý�����</sys:String>
+  <sys:String x:Key="MainWindow_Running">�����������С�</sys:String>
+  <sys:String x:Key="MainWindow_Hint1">���� U �̻����ֻ����ӵ��Բ�ѡ���ļ����䡹�󣬽��Զ�����������ڡ�</sys:String>
+  <sys:String x:Key="MainWindow_Hint2">��Ҳ������С�������ڣ�������Ӱ���Զ�������</sys:String>
+  <sys:String x:Key="MainWindow_Settings">����</sys:String>
+
+  <!-- MediaWindow -->
+  <sys:String x:Key="Media_CopyToFolder">���Ƶ��ļ��У�</sys:String>
+  <sys:String x:Key="Media_Browse">�����</sys:String>
+  <sys:String x:Key="Media_Refresh">ˢ���б�</sys:String>
+  <sys:String x:Key="Media_CopySelected">������ѡ��Ŀ���ļ���</sys:String>
+  <sys:String x:Key="Media_ToggleSelectAll">ȫѡ/ȡ��ȫѡ</sys:String>
+  <sys:String x:Key="Media_Hint">��ʾ����ѡ����ϵ�����/�ļ��У�˫����Ԥ����</sys:String>
+  <sys:String x:Key="Media_Select">ѡ��</sys:String>
+
+  <!-- PreviewWindow -->
+  <sys:String x:Key="Preview_Title">Ԥ��</sys:String>
+  <sys:String x:Key="Preview_Loading">���ڼ���Ԥ����</sys:String>
+  <sys:String x:Key="Preview_PlayPause">��ͣ/����</sys:String>
+  <sys:String x:Key="Preview_Close">�ر�</sys:String>
+  <sys:String x:Key="Preview_CannotPreview">�޷�Ԥ�����ļ���</sys:String>
+  <sys:String x:Key="Preview_Failed">Ԥ��ʧ�ܣ�{0}</sys:String>
+
+  <!-- SettingsWindow -->
+  <sys:String x:Key="Settings_Title">����</sys:String>
+  <sys:String x:Key="Settings_Language">���ԣ�</sys:String>
+  <sys:String x:Key="Settings_Save">����</sys:String>
+  <sys:String x:Key="Settings_RestartHint">�����л������������ȫ��Ч��</sys:String>
+
+  <!-- ViewModel / Code-behind �ַ��� -->
+  <sys:String x:Key="VM_Loading">���ڼ��ء�</sys:String>
+  <sys:String x:Key="VM_DeviceNotFound">δ�ҵ��ֻ�/��Я�豸�����������ӡ�</sys:String>
+  <sys:String x:Key="VM_MediaCount">�� {0} ��ý���ļ���·����Ϊ����Ŀ�ꡣ</sys:String>
+  <sys:String x:Key="VM_LoadFailed">����ʧ�ܣ�{0}</sys:String>
+  <sys:String x:Key="VM_BrowseFolder">ѡ����Ŀ���ļ���</sys:String>
+  <sys:String x:Key="VM_PleaseSelect">���ȹ�ѡҪ���Ƶ��ļ���</sys:String>
+  <sys:String x:Key="VM_Hint">��ʾ</sys:String>
+  <sys:String x:Key="VM_CopyResult">���ƽ��</sys:String>
+  <sys:String x:Key="VM_CopyDone">��ɣ��ɹ� {0}������ {1}��ʧ�� {2}��</sys:String>
+  <sys:String x:Key="VM_CopiedToTarget">�Ѹ��Ƶ���ǰ·����Ŀ¼��&#x0a;{0}&#x0a;�ɹ� {1}������ {2}��ʧ�� {3}��</sys:String>
+  <sys:String x:Key="VM_ExternalDropDone">�ѽ����ⲿ������ļ����Ƶ���ǰ·����Ŀ¼��</sys:String>
+  <sys:String x:Key="VM_Done">���</sys:String>
+
+  <!-- MTP ɨ�� -->
+  <sys:String x:Key="Mtp_FoundVolumes">���� {0} ���洢�����ʼɨ�衭</sys:String>
+  <sys:String x:Key="Mtp_Scanning">����ɨ�� {0}�������ҵ� {1} ���ļ���</sys:String>
+  <sys:String x:Key="Mtp_ScanDone">ɨ����ɣ��� {0} ��ý���ļ���</sys:String>
+  <sys:String x:Key="Mtp_FoundFiles">���ҵ� {0} ��ý���ļ���</sys:String>
+
+  <!-- DeviceArrival -->
+  <sys:String x:Key="Device_UsbDrive">U �� ({0})</sys:String>
+</ResourceDictionary>

@@ -107,8 +107,9 @@ public partial class MediaWindow : Window
                     mtpDevice: null,
                     new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename })
                 .ConfigureAwait(true);
-            System.Windows.MessageBox.Show("已将从外部拖入的文件复制到当前路径栏目录。", "完成", MessageBoxButton.OK,
+            System.Windows.MessageBox.Show(LanguageManager.GetString("VM_ExternalDropDone"), LanguageManager.GetString("VM_Done"), MessageBoxButton.OK,
                 MessageBoxImage.Information);
+
 
             e.Handled = true;
         }

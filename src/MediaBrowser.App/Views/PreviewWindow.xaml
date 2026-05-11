@@ -23,7 +23,7 @@
                   MediaEnded="VideoPlayer_MediaEnded"/>
     <!-- ������ʾ -->
     <TextBlock x:Name="LoadingText"
-               Text="���ڼ���Ԥ����"
+               Text="{DynamicResource Preview_Loading}"
                Foreground="White"
                FontSize="18"
                HorizontalAlignment="Center"
@@ -35,11 +35,11 @@
                 VerticalAlignment="Bottom"
                 Margin="0,0,0,16"
                 Visibility="Collapsed">
-      <Button Content="��ͣ/����" Click="PlayPause_Click"
+      <Button Content="{DynamicResource Preview_PlayPause}" Click="PlayPause_Click"
 
               Foreground="White" Background="#444" Padding="12,6" Margin="4"
               FontSize="14"/>
-      <Button Content="�ر�" Click="Close_Click"
+      <Button Content="{DynamicResource Preview_Close}" Click="Close_Click"
 
               Foreground="White" Background="#444" Padding="12,6" Margin="4"
               FontSize="14"/>

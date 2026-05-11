@@ -49,7 +49,8 @@ public static class MtpMediaCatalog
         if (storageRoots.Count == 0)
             return list;
 
-        progress?.Report(new MtpScanProgress($"发现 {storageRoots.Count} 个存储卷，开始扫描…", 0));
+        progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_FoundVolumes", storageRoots.Count), 0));
+
 
         foreach (var storageRoot in storageRoots)
         {
@@ -57,7 +58,8 @@ public static class MtpMediaCatalog
             ScanMediaDirectories(device, storageRoot, deviceName, list, progress, cancellationToken);
         }
 
-        progress?.Report(new MtpScanProgress($"扫描完成，共 {list.Count} 个媒体文件。", list.Count));
+        progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_ScanDone", list.Count), list.Count));
+
         return list;
     }
 
@@ -95,7 +97,8 @@ public static class MtpMediaCatalog
         {
             cancellationToken.ThrowIfCancellationRequested();
             var dirName = Path.GetFileName(dir.TrimEnd('\\'));
-            progress?.Report(new MtpScanProgress($"正在扫描 {dirName}…（已找到 {list.Count} 个文件）", list.Count));
+            progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_Scanning", dirName, list.Count), list.Count));
+
             EnumerateDirectoryRecursive(device, dir, deviceName, list, progress, cancellationToken, maxDepth: 10);
         }
     }
@@ -139,7 +142,8 @@ public static class MtpMediaCatalog
                 if (list.Count % 20 == 0)
                 {
                     progress?.Report(new MtpScanProgress(
-                        $"已找到 {list.Count} 个媒体文件…", list.Count));
+                        LanguageManager.GetString("Mtp_FoundFiles", list.Count), list.Count));
+
                 }
             }
         }
