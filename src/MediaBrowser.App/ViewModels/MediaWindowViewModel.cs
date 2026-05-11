@@ -91,9 +91,11 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 }
 
                 // TryConnectByName 已完成 Connect，无需再次调用
-                items = await MtpMediaCatalog.EnumerateAsync(_mtpDevice).ConfigureAwait(true);
-
+                // 使用进度回调实时更新状态文本
+                var progress = new Progress<MtpScanProgress>(p => StatusText = p.Message);
+                items = await MtpMediaCatalog.EnumerateAsync(_mtpDevice, progress).ConfigureAwait(true);
             }
+
 
             var groups = TimelineGrouper.GroupByLocalDay(items);
             foreach (var g in groups)
