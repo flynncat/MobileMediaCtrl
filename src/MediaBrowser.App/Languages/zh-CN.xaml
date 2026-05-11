@@ -51,6 +51,12 @@
   <sys:String x:Key="Mtp_ScanDone">扫描完成，共 {0} 个媒体文件。</sys:String>
   <sys:String x:Key="Mtp_FoundFiles">已发现 {0} 个媒体文件...</sys:String>
 
+  <!-- 月分组 -->
+  <sys:String x:Key="Group_MonthFormat">{0}年{1}月</sys:String>
+
+  <!-- 增量扫描 -->
+  <sys:String x:Key="VM_Scanning">正在扫描…已找到 {0} 个文件</sys:String>
+
   <!-- DeviceArrival -->
   <sys:String x:Key="Device_UsbDrive">U 盘 ({0})</sys:String>
 </ResourceDictionary>

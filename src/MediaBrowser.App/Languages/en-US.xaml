@@ -51,6 +51,13 @@
   <sys:String x:Key="Mtp_ScanDone">Scan complete, {0} media files found.</sys:String>
   <sys:String x:Key="Mtp_FoundFiles">{0} media files found...</sys:String>
 
+  <!-- Month Group -->
+  <sys:String x:Key="Group_MonthFormat">{1}/{0}</sys:String>
+
+  <!-- Incremental Scan -->
+  <sys:String x:Key="VM_Scanning">Scanning... {0} files found</sys:String>
+
   <!-- DeviceArrival -->
   <sys:String x:Key="Device_UsbDrive">USB Drive ({0})</sys:String>
 </ResourceDictionary>
+

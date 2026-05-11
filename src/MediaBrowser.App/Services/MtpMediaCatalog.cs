@@ -1,7 +1,10 @@
 ﻿using System.IO;
 using MediaBrowser.Core.MediaFormats;
 using MediaBrowser.Core.Models;
+using MediaBrowser.Core.Services;
 using MediaDevices;
+
+
 
 namespace MediaBrowser.App.Services;
 
@@ -15,6 +18,8 @@ public static class MtpMediaCatalog
         "100ANDRO", "WhatsApp", "Telegram", "Snapchat",
     };
 
+    private const int BatchSize = 20;
+
     /// <summary>
     /// 异步枚举设备媒体文件，支持进度回调（每发现一批文件就报告）。
     /// </summary>
@@ -22,12 +27,25 @@ public static class MtpMediaCatalog
         MediaDevice device,
         IProgress<MtpScanProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => EnumerateCore(device, progress, cancellationToken), cancellationToken);
+        EnumerateAsync(device, progress, batchCallback: null, cancellationToken);
+
+    /// <summary>
+    /// 异步枚举设备媒体文件，支持增量批次回调。
+    /// <paramref name="batchCallback"/> 每发现一批文件（约20个）就推送给调用方，用于增量显示。
+    /// </summary>
+    public static Task<IReadOnlyList<MediaItem>> EnumerateAsync(
+        MediaDevice device,
+        IProgress<MtpScanProgress>? progress,
+        Action<IReadOnlyList<MediaItem>>? batchCallback,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => EnumerateCore(device, progress, batchCallback, cancellationToken), cancellationToken);
 
     private static IReadOnlyList<MediaItem> EnumerateCore(
         MediaDevice device,
         IProgress<MtpScanProgress>? progress,
+        Action<IReadOnlyList<MediaItem>>? batchCallback,
         CancellationToken cancellationToken)
+
     {
         var list = new List<MediaItem>();
         if (!device.IsConnected)
@@ -51,12 +69,22 @@ public static class MtpMediaCatalog
 
         progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_FoundVolumes", storageRoots.Count), 0));
 
+        // 批次缓冲区，累积到 BatchSize 个文件后推送
+        var pendingBatch = new List<MediaItem>();
 
         foreach (var storageRoot in storageRoots)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ScanMediaDirectories(device, storageRoot, deviceName, list, progress, cancellationToken);
+            ScanMediaDirectories(device, storageRoot, deviceName, list, pendingBatch, batchCallback, progress, cancellationToken);
         }
+
+        // 推送剩余不足一批的文件
+        if (pendingBatch.Count > 0)
+        {
+            batchCallback?.Invoke(pendingBatch.ToList());
+            pendingBatch.Clear();
+        }
+
 
         progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_ScanDone", list.Count), list.Count));
 
@@ -68,8 +96,11 @@ public static class MtpMediaCatalog
         string storagePath,
         string deviceName,
         List<MediaItem> list,
+        List<MediaItem> pendingBatch,
+        Action<IReadOnlyList<MediaItem>>? batchCallback,
         IProgress<MtpScanProgress>? progress,
         CancellationToken cancellationToken)
+
     {
         // 获取存储卷下的顶层目录
         List<string> topDirs;
@@ -99,7 +130,7 @@ public static class MtpMediaCatalog
             var dirName = Path.GetFileName(dir.TrimEnd('\\'));
             progress?.Report(new MtpScanProgress(LanguageManager.GetString("Mtp_Scanning", dirName, list.Count), list.Count));
 
-            EnumerateDirectoryRecursive(device, dir, deviceName, list, progress, cancellationToken, maxDepth: 10);
+            EnumerateDirectoryRecursive(device, dir, deviceName, list, pendingBatch, batchCallback, progress, cancellationToken, maxDepth: 10);
         }
     }
 
@@ -108,9 +139,12 @@ public static class MtpMediaCatalog
         string currentDir,
         string deviceName,
         List<MediaItem> list,
+        List<MediaItem> pendingBatch,
+        Action<IReadOnlyList<MediaItem>>? batchCallback,
         IProgress<MtpScanProgress>? progress,
         CancellationToken cancellationToken,
         int maxDepth)
+
     {
         if (maxDepth <= 0)
             return;
@@ -126,25 +160,37 @@ public static class MtpMediaCatalog
                 if (!MediaExtensionLists.IsMediaFile(path))
                     continue;
 
-                list.Add(new MediaItem
+                var fileName = Path.GetFileName(path.TrimEnd('\\'));
+                var fileTime = FileNameDateParser.TryParse(fileName)
+                               ?? TryGetFileTimeUtc(device, path)
+                               ?? DateTime.UtcNow;
+
+
+
+                var item = new MediaItem
                 {
                     Id = $"mtp:{deviceName}|{path}",
                     SourceKind = MediaSourceKind.Mtp,
-                    DisplayName = Path.GetFileName(path.TrimEnd('\\')),
+                    DisplayName = fileName,
                     ContainingFolderPath = currentDir,
-                    SortTimeUtc = DateTime.UtcNow, // MTP 获取时间太慢，先用当前时间
+                    SortTimeUtc = fileTime,
                     IsVideo = MediaExtensionLists.IsVideo(path),
                     MtpDeviceId = deviceName,
                     MtpObjectId = path,
-                });
+                };
 
-                // 每发现 20 个文件报告一次进度
-                if (list.Count % 20 == 0)
+                list.Add(item);
+                pendingBatch.Add(item);
+
+                // 累积到一批后推送并报告进度
+                if (pendingBatch.Count >= BatchSize)
                 {
+                    batchCallback?.Invoke(pendingBatch.ToList());
+                    pendingBatch.Clear();
                     progress?.Report(new MtpScanProgress(
                         LanguageManager.GetString("Mtp_FoundFiles", list.Count), list.Count));
-
                 }
+
             }
         }
         catch
@@ -175,13 +221,37 @@ public static class MtpMediaCatalog
                 name.Equals("trash", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            EnumerateDirectoryRecursive(device, subDir, deviceName, list, progress, cancellationToken, maxDepth - 1);
+            EnumerateDirectoryRecursive(device, subDir, deviceName, list, pendingBatch, batchCallback, progress, cancellationToken, maxDepth - 1);
+
         }
     }
 
     /// <summary>
+    /// 尝试通过 MTP 协议获取文件的修改时间（UTC）。
+    /// </summary>
+    private static DateTime? TryGetFileTimeUtc(MediaDevice device, string path)
+    {
+        try
+        {
+            var info = device.GetFileInfo(path);
+            // 优先使用 LastWriteTime，其次 CreationTime
+            if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
+                return info.LastWriteTime.Value.ToUniversalTime();
+            if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
+                return info.CreationTime.Value.ToUniversalTime();
+        }
+        catch
+        {
+            // GetFileInfo 可能抛出 COM 异常，忽略
+        }
+        return null;
+    }
+
+    /// <summary>
+
     /// 安全迭代惰性枚举器，遇到异常时终止迭代而非抛出。
     /// </summary>
+
     private static IEnumerable<string> SafeEnumerate(IEnumerable<string> source)
     {
         using var enumerator = source.GetEnumerator();
