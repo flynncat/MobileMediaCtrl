@@ -19,7 +19,8 @@ public static class MtpMediaCatalog
         if (!device.IsConnected)
             return list;
 
-        var pnp = device.PnPDeviceID ?? "";
+        // 使用 FriendlyName 作为设备标识（与 DeviceSessionDescriptor.MtpDeviceId 一致）
+        var deviceName = device.FriendlyName ?? "";
 
         foreach (var path in device.EnumerateFiles(@"\", "*.*", SearchOption.AllDirectories))
         {
@@ -35,15 +36,16 @@ public static class MtpMediaCatalog
 
                 list.Add(new MediaItem
                 {
-                    Id = $"mtp:{pnp}|{path}",
+                    Id = $"mtp:{deviceName}|{path}",
                     SourceKind = MediaSourceKind.Mtp,
                     DisplayName = Path.GetFileName(path.TrimEnd('\\')),
                     ContainingFolderPath = folder,
                     SortTimeUtc = sortUtc,
                     IsVideo = MediaExtensionLists.IsVideo(path),
-                    MtpDeviceId = pnp,
+                    MtpDeviceId = deviceName,
                     MtpObjectId = path,
                 });
+
             }
             catch
             {

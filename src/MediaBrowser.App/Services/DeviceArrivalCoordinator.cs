@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Diagnostics;
+using System.IO;
 using System.Management;
 using System.Windows.Threading;
 using MediaBrowser.Core.Models;
@@ -13,7 +14,8 @@ public sealed class DeviceArrivalCoordinator : IDisposable
     private readonly object _gate = new();
     private ManagementEventWatcher? _volumeWatcher;
     private DispatcherTimer? _mtpPoll;
-    private HashSet<string> _mtpSnapshot = new(StringComparer.Ordinal);
+    private HashSet<string> _mtpSnapshot = new(StringComparer.OrdinalIgnoreCase);
+
     private bool _started;
 
     public void Start()
@@ -54,11 +56,11 @@ public sealed class DeviceArrivalCoordinator : IDisposable
     }
 
     /// <summary>在关闭 MTP 窗口后调用，以便在设备仍连接时可再次自动打开。</summary>
-    public void NotifyMtpSessionClosed(string pnpDeviceId)
+    public void NotifyMtpSessionClosed(string deviceName)
     {
         lock (_gate)
         {
-            _mtpSnapshot.Remove(pnpDeviceId);
+            _mtpSnapshot.Remove(deviceName);
         }
     }
 
@@ -89,34 +91,36 @@ public sealed class DeviceArrivalCoordinator : IDisposable
 
     private void RefreshMtpDevices()
     {
-        List<string> ids;
+        List<string> names;
         try
         {
-            ids = MtpDeviceLister.GetPortableDevicePnPIds();
+            names = MtpDeviceLister.GetMtpDeviceNames();
+            Debug.WriteLine($"[DeviceArrival] MTP 枚举到 {names.Count} 个设备: {string.Join("; ", names)}");
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[DeviceArrival] MTP 枚举异常: {ex.Message}");
             return;
         }
 
         lock (_gate)
         {
-            var current = ids.ToHashSet(StringComparer.Ordinal);
-            foreach (var id in current)
+            var current = names.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var name in current)
             {
-                if (_mtpSnapshot.Contains(id))
+                if (_mtpSnapshot.Contains(name))
                     continue;
 
-                var sessionKey = MediaWindowRegistry.BuildMtpSessionKey(id);
+                var sessionKey = MediaWindowRegistry.BuildMtpSessionKey(name);
                 if (MediaWindowRegistry.IsOpen(sessionKey))
                     continue;
 
-                var name = MtpDeviceLister.TryGetFriendlyName(id) ?? "手机/便携设备";
                 var desc = new DeviceSessionDescriptor
                 {
                     SessionKey = sessionKey,
                     Kind = DeviceKind.MtpDevice,
-                    MtpDeviceId = id,
+                    MtpDeviceId = name,
                     DisplayName = name,
                 };
                 MediaWindowFactory.OpenForDevice(desc);

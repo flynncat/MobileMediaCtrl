@@ -83,15 +83,16 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             else
             {
                 _mtpDevice?.Disconnect();
-                _mtpDevice = MtpDeviceLister.TryFindByPnPId(_descriptor.MtpDeviceId!);
+                _mtpDevice = MtpDeviceLister.TryConnectByName(_descriptor.MtpDeviceId!);
                 if (_mtpDevice is null)
                 {
                     StatusText = "未找到手机/便携设备，请重新连接。";
                     return;
                 }
 
-                _mtpDevice.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false);
+                // TryConnectByName 已完成 Connect，无需再次调用
                 items = await MtpMediaCatalog.EnumerateAsync(_mtpDevice).ConfigureAwait(true);
+
             }
 
             var groups = TimelineGrouper.GroupByLocalDay(items);
@@ -274,10 +275,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         if (mtpRecords.Count > 0)
         {
             var pnp = mtpRecords[0].PnpId!;
-            sourceDevice = string.Equals(pnp, _descriptor.MtpDeviceId, StringComparison.Ordinal)
+            sourceDevice = string.Equals(pnp, _descriptor.MtpDeviceId, StringComparison.OrdinalIgnoreCase)
                 ? _mtpDevice
-                : MtpDeviceLister.TryFindByPnPId(pnp);
-            sourceDevice?.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false);
+                : MtpDeviceLister.TryConnectByName(pnp);
+
         }
 
         IsBusy = true;
@@ -289,9 +290,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 sourceDevice,
                 new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename }).ConfigureAwait(true);
 
-            if (sourceDevice is not null &&
-                !string.Equals(sourceDevice.PnPDeviceID, _descriptor.MtpDeviceId, StringComparison.Ordinal))
+            if (sourceDevice is not null && sourceDevice != _mtpDevice)
                 sourceDevice.Disconnect();
+
 
             System.Windows.MessageBox.Show(
                 $"已复制到当前路径栏目录：\n{CurrentDropTargetPath}\n成功 {result.SuccessCount}，跳过 {result.SkippedCount}，失败 {result.FailedCount}。",
@@ -323,13 +324,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             if (r.Kind != "mtp" || string.IsNullOrEmpty(r.MtpPath) || string.IsNullOrEmpty(r.PnpId))
                 continue;
 
-            var dev = string.Equals(r.PnpId, _descriptor.MtpDeviceId, StringComparison.Ordinal)
+            var dev = string.Equals(r.PnpId, _descriptor.MtpDeviceId, StringComparison.OrdinalIgnoreCase)
                 ? _mtpDevice
-                : MtpDeviceLister.TryFindByPnPId(r.PnpId);
+                : MtpDeviceLister.TryConnectByName(r.PnpId);
             if (dev is null)
                 continue;
-            if (!dev.IsConnected)
-                dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false);
+
 
             var name = string.IsNullOrWhiteSpace(r.DisplayName)
                 ? Path.GetFileName(r.MtpPath.TrimEnd('\\'))
@@ -349,8 +349,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 // ignore single failure
             }
 
-            if (!string.Equals(dev.PnPDeviceID, _descriptor.MtpDeviceId, StringComparison.Ordinal))
+            if (dev != _mtpDevice)
                 dev.Disconnect();
+
         }
 
         return paths;
