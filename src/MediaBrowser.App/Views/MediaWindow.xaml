@@ -36,10 +36,11 @@
           <Button Content="全选/取消全选" Command="{Binding ToggleSelectAllCommand}"
                   AutomationProperties.Name="全选或取消全选"/>
         </StackPanel>
-        <TextBlock Text="提示：勾选文件后，可拖到桌面或其它文件夹；也可拖到另一个本程序窗口，将复制到该窗口的路径栏目录。"
-                   FontSize="16"
-                   Opacity="0.85"
+        <TextBlock Text="提示：勾选后可拖到桌面/文件夹；双击可预览。"
+                   FontSize="13"
+                   Opacity="0.65"
                    Margin="0,8,0,0"/>
+
       </StackPanel>
     </Border>
 
@@ -66,7 +67,9 @@
                             PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="Tile_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
+                            MouseLeftButtonDown="Tile_MouseDoubleClick"
                             AutomationProperties.Name="媒体缩略图卡片">
+
                       <DockPanel>
                         <CheckBox DockPanel.Dock="Top"
                                   IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

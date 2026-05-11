@@ -8,6 +8,8 @@ using MediaBrowser.App.Services;
 using MediaBrowser.App.ViewModels;
 using MediaBrowser.Core.Models;
 using MediaBrowser.Core.Services;
+using MediaDevices;
+
 
 namespace MediaBrowser.App.Views;
 
@@ -17,6 +19,9 @@ public partial class MediaWindow : Window
 
     private bool _dragPrepared;
     private readonly MediaWindowViewModel _vm;
+    /// <summary>标识本窗口实例，用于检测拖拽到自身窗口的误操作。</summary>
+    internal readonly string InstanceId = Guid.NewGuid().ToString("N");
+
 
     public MediaWindow(DeviceSessionDescriptor descriptor)
     {
@@ -34,18 +39,41 @@ public partial class MediaWindow : Window
 
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
+        // 检测是否拖拽到自身窗口（误操作）
+        if (e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
+        {
+            var sourceId = e.Data.GetData(InternalDragFormats.SourceWindowId) as string;
+            if (sourceId == InstanceId)
+            {
+                e.Effects = System.Windows.DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Data.GetDataPresent(InternalDragFormats.MediaItems) ||
             e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
             e.Effects = System.Windows.DragDropEffects.Copy;
-
             e.Handled = true;
         }
     }
 
 
+
     private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
     {
+        // 拖拽到自身窗口时忽略（误操作）
+        if (e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
+        {
+            var sourceId = e.Data.GetData(InternalDragFormats.SourceWindowId) as string;
+            if (sourceId == InstanceId)
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Data.GetDataPresent(InternalDragFormats.MediaItems))
         {
             var json = e.Data.GetData(InternalDragFormats.MediaItems) as string;
@@ -54,6 +82,7 @@ public partial class MediaWindow : Window
             e.Handled = true;
             return;
         }
+
 
 
         if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) &&
@@ -123,7 +152,10 @@ public partial class MediaWindow : Window
 
         var data = new System.Windows.DataObject();
 
+        // 附带源窗口标识，用于检测拖拽到自身窗口的误操作
+        data.SetData(InternalDragFormats.SourceWindowId, InstanceId);
         data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
+
 
         var paths = await _vm.StageFilesForShellDragAsync(records).ConfigureAwait(true);
         if (paths.Count > 0)
@@ -141,12 +173,33 @@ public partial class MediaWindow : Window
         }
     }
 
+    /// <summary>双击缩略图卡片时打开预览窗口。</summary>
+    private async void Tile_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2)
+            return;
+        if (IsUnderCheckBox(e.OriginalSource as DependencyObject))
+            return;
+
+        if (sender is not FrameworkElement fe || fe.DataContext is not MediaTileViewModel tile)
+            return;
+
+        // 取消拖拽准备，防止双击触发拖拽
+        _dragPrepared = false;
+
+        var preview = new PreviewWindow();
+        preview.Owner = this;
+        preview.Show();
+        await preview.LoadMediaAsync(tile.Item, _vm.MtpDevice).ConfigureAwait(true);
+
+        e.Handled = true;
+    }
+
     private static bool IsUnderCheckBox(DependencyObject? src)
     {
         while (src is not null)
         {
             if (src is System.Windows.Controls.CheckBox)
-
                 return true;
             src = VisualTreeHelper.GetParent(src);
         }
@@ -154,3 +207,4 @@ public partial class MediaWindow : Window
         return false;
     }
 }
+

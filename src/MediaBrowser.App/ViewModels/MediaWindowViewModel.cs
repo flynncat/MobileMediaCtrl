@@ -19,6 +19,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     private readonly DeviceSessionDescriptor _descriptor;
     private readonly ThumbnailLoader _thumbs = new();
     private MediaDevice? _mtpDevice;
+    /// <summary>当前连接的MTP设备（预览时需要用来下载文件）。</summary>
+    public MediaDevice? MtpDevice => _mtpDevice;
+
     private string _currentDropTargetPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     private string _statusText = "正在加载…";
     private bool _isBusy;
