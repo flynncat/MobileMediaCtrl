@@ -335,30 +335,92 @@ public partial class MediaWindow : Window
         if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) &&
             e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] paths)
         {
-            var items = paths
-                .Where(File.Exists)
-                .Select(p => new MediaItem
-                {
-                    Id = p,
-                    SourceKind = MediaSourceKind.FileSystem,
-                    FileSystemPath = p,
-                    DisplayName = Path.GetFileName(p),
-                    SortTimeUtc = File.GetLastWriteTimeUtc(p),
-                })
-                .ToList();
+            // MTP 设备暂不支持外部文件写入：给出友好提示
+            if (!_vm.IsFileSystemDevice)
+            {
+                System.Windows.MessageBox.Show(
+                    LanguageManager.GetString("VM_ExternalDropMtpUnsupported"),
+                    LanguageManager.GetString("VM_Done"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                e.Handled = true;
+                return;
+            }
 
-            await PortableTransferService.CopyToDirectoryAsync(
+            // 文件系统设备（U 盘）：把外部文件复制到设备根目录并刷新窗口
+            string? targetRoot = _vm.DeviceRootPath;
+            if (string.IsNullOrEmpty(targetRoot) || !Directory.Exists(targetRoot))
+            {
+                System.Windows.MessageBox.Show(
+                    LanguageManager.GetString("VM_ExternalDropNoTarget"),
+                    LanguageManager.GetString("VM_Done"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                e.Handled = true;
+                return;
+            }
+
+            // 收集所有有效文件（递归展开拖入的文件夹）
+            var items = new List<MediaItem>();
+            foreach (var p in paths)
+            {
+                if (File.Exists(p))
+                {
+                    items.Add(new MediaItem
+                    {
+                        Id = p,
+                        SourceKind = MediaSourceKind.FileSystem,
+                        FileSystemPath = p,
+                        DisplayName = Path.GetFileName(p),
+                        SortTimeUtc = File.GetLastWriteTimeUtc(p),
+                    });
+                }
+                else if (Directory.Exists(p))
+                {
+                    try
+                    {
+                        foreach (var f in Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
+                        {
+                            items.Add(new MediaItem
+                            {
+                                Id = f,
+                                SourceKind = MediaSourceKind.FileSystem,
+                                FileSystemPath = f,
+                                DisplayName = Path.GetFileName(f),
+                                SortTimeUtc = File.GetLastWriteTimeUtc(f),
+                            });
+                        }
+                    }
+                    catch { /* 忽略部分子目录读取失败 */ }
+                }
+            }
+
+            if (items.Count == 0)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            var result = await PortableTransferService.CopyToDirectoryAsync(
                     items,
-                    _vm.CurrentDropTargetPath,
+                    targetRoot,
                     mtpDevice: null,
                     new CopyOptions { CollisionPolicy = NameCollisionPolicy.AutoRename })
                 .ConfigureAwait(true);
+
+            // 复制完成后刷新窗口，让用户能立即看到新文件
+            await _vm.LoadAsync().ConfigureAwait(true);
+
             System.Windows.MessageBox.Show(
-                LanguageManager.GetString("VM_ExternalDropDone"),
+                LanguageManager.GetString(
+                    "VM_ExternalDropDoneDetailed",
+                    targetRoot,
+                    result.SuccessCount,
+                    result.SkippedCount,
+                    result.FailedCount),
                 LanguageManager.GetString("VM_Done"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             e.Handled = true;
         }
+
     }
 
     private void Tile_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -465,7 +527,8 @@ public partial class MediaWindow : Window
         var preview = new PreviewWindow();
         preview.Owner = this;
         preview.Show();
-        await preview.LoadMediaAsync(tile.Item, _vm.MtpDevice).ConfigureAwait(true);
+        await preview.LoadMediaAsync(tile.Item, _vm).ConfigureAwait(true);
+
 
         e.Handled = true;
     }

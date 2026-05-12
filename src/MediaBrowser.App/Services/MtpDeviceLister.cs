@@ -10,9 +10,19 @@ namespace MediaBrowser.App.Services;
 public static class MtpDeviceLister
 {
     /// <summary>
+    /// MTP 设备访问的全局串行锁。
+    /// MediaDevices 库的 MediaDevice 对象不是线程安全的；
+    /// 所有调用方（缩略图、预览、拖拽、复制等）在使用 MediaDevice 进行 IO 操作时
+    /// 都应通过此锁串行化，避免触发 NotConnectedException、设备挂起等问题。
+    /// 由于本应用通常只连接一个手机，使用进程级单一锁即可。
+    /// </summary>
+    public static readonly object DeviceAccessLock = new();
+
+    /// <summary>
     /// 返回当前可见的 MTP 设备的 FriendlyName 列表（无需 Connect）。
     /// </summary>
     public static List<string> GetMtpDeviceNames()
+
     {
         try
         {

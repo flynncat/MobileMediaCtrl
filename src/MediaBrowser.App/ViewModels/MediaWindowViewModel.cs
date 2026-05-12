@@ -31,6 +31,19 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     private List<MediaItem>? _pendingBatch;
     private bool _batchScheduled;
 
+    // ── MTP 设备访问串行化锁 ──
+    // MediaDevices 库的 MediaDevice 对象不是线程安全的；多线程同时调用 DownloadFile/GetFileInfo/DownloadThumbnail
+    // 都可能触发 NotConnectedException 等异常。Shell 在拖放 Drop 后会并发请求多个 IStream 的内容，
+    // 缩略图加载、预览、复制操作也都会并发触发，必须用此锁串行化所有针对 _mtpDevice 的访问。
+    // 复用 MtpDeviceLister.DeviceAccessLock 作为整个进程的共享锁，让所有 MTP 调用方串行化。
+    private static object s_mtpDeviceLock => MtpDeviceLister.DeviceAccessLock;
+
+    /// <summary>对外暴露的 MTP 设备访问锁；所有对 MtpDevice 的调用方应通过此锁串行化。</summary>
+    public object MtpAccessLock => MtpDeviceLister.DeviceAccessLock;
+
+
+
+
     /// <summary>当前连接的MTP设备（预览时需要用来下载文件）。</summary>
     public MediaDevice? MtpDevice => _mtpDevice;
 
@@ -558,8 +571,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             {
                 using (var fs = File.Create(dest))
                 {
-                    dev.DownloadFile(r.MtpPath!, fs);
+                    lock (s_mtpDeviceLock)
+                    {
+                        dev.DownloadFile(r.MtpPath!, fs);
+                    }
                 }
+
 
                 paths.Add(dest);
             }
@@ -611,8 +628,15 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             {
                 await using (var fs = File.Create(dest))
                 {
-                    await Task.Run(() => dev.DownloadFile(r.MtpPath!, fs)).ConfigureAwait(true);
+                    await Task.Run(() =>
+                    {
+                        lock (s_mtpDeviceLock)
+                        {
+                            dev.DownloadFile(r.MtpPath!, fs);
+                        }
+                    }).ConfigureAwait(true);
                 }
+
 
                 paths.Add(dest);
             }
@@ -687,24 +711,31 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             // 尝试预获取大小和时间（用于 Shell 进度显示）
             long mtpSize = -1;
             DateTime? mtpTime = null;
-            if (localDevice != null && localDevice.IsConnected &&
-                string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase))
+            // 同样需要在 MTP 锁内访问，避免与缩略图/扫描线程并发触发设备故障。
+            if (localDevice != null && string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase))
             {
-                try
+                lock (s_mtpDeviceLock)
                 {
-                    var info = localDevice.GetFileInfo(mtpPath);
-                    if (info != null)
+                    try
                     {
-                        try { mtpSize = (long)info.Length; } catch { /* 部分驱动不支持 */ }
-                        if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
-                            mtpTime = info.LastWriteTime.Value.ToUniversalTime();
-                        else if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
-                            mtpTime = info.CreationTime.Value.ToUniversalTime();
-                    }
+                        if (localDevice.IsConnected)
 
+                        {
+                            var info = localDevice.GetFileInfo(mtpPath);
+                            if (info != null)
+                            {
+                                try { mtpSize = (long)info.Length; } catch { /* 部分驱动不支持 */ }
+                                if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
+                                    mtpTime = info.LastWriteTime.Value.ToUniversalTime();
+                                else if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
+                                    mtpTime = info.CreationTime.Value.ToUniversalTime();
+                            }
+                        }
+                    }
+                    catch { /* 忽略：预获取失败不影响主流程 */ }
                 }
-                catch { /* 忽略 */ }
             }
+
 
             list.Add(new VirtualFileDescriptor
             {
@@ -713,24 +744,54 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 LastWriteTimeUtc = mtpTime,
                 StreamContents = stream =>
                 {
-                    // 此回调由 OLE Shell 在 Drop 后调用（通常在 STA 线程，可能是后台线程）
-                    // 直接调用 MediaDevice 同步下载，结果写入 stream
-                    try
+                    // 此回调由 OLE Shell 在 Drop 后调用（通常在 STA/RPC 线程），
+                    // 多个文件的 IStream::Read 会并发触发本回调；
+                    // 而 MediaDevice 不是线程安全的，因此在锁内串行下载。
+                    lock (s_mtpDeviceLock)
+
                     {
-                        MediaDevice? dev = localDevice;
+                        MediaDevice? dev = _mtpDevice;
                         bool needDisconnect = false;
-                        if (dev == null || !dev.IsConnected ||
-                            !string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase))
+
+                        // 如果当前设备已断开或不是同一设备，则尝试新建临时连接。
+                        bool sameDevice = string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase);
+                        bool deviceUsable = false;
+                        if (sameDevice && dev != null)
                         {
-                            dev = MtpDeviceLister.TryConnectByName(pnpId ?? "");
-                            needDisconnect = dev != null;
+                            try { deviceUsable = dev.IsConnected; }
+                            catch { deviceUsable = false; }
                         }
+
+                        if (!deviceUsable)
+                        {
+                            // 主设备不可用：尝试用 PnP 名重连。优先复用 _mtpDevice 引用。
+                            if (sameDevice && dev != null)
+                            {
+                                try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); }
+                                catch { /* 忽略，下面尝试新建 */ }
+                                try { deviceUsable = dev.IsConnected; }
+                                catch { deviceUsable = false; }
+                            }
+
+                            if (!deviceUsable)
+                            {
+                                dev = MtpDeviceLister.TryConnectByName(pnpId ?? "");
+                                needDisconnect = dev != null;
+                            }
+                        }
+
                         if (dev == null)
-                            return;
+                            return; // 无设备可用：返回空流，Shell 会写出 0 字节文件
 
                         try
                         {
+                            // 关键：DownloadFile 必须在锁内同步完成，写入 stream 后再返回。
                             dev.DownloadFile(mtpPath, stream);
+                        }
+                        catch
+                        {
+                            // 单文件下载失败：写入到 stream 的部分内容保留为不完整文件。
+                            // 不向上抛出，避免连锁影响其他文件。
                         }
                         finally
                         {
@@ -740,12 +801,9 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                             }
                         }
                     }
-                    catch
-                    {
-                        // 忽略下载失败
-                    }
                 },
             });
+
         }
 
         return list;
@@ -755,6 +813,72 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     /// 判断当前设备是否为文件系统设备（可直接使用文件路径拖拽）。
     /// </summary>
     public bool IsFileSystemDevice => _descriptor.Kind == DeviceKind.RemovableVolume;
+
+    /// <summary>
+    /// 当前设备的卷根目录（仅文件系统设备有效；MTP 设备返回 null）。
+    /// </summary>
+    public string? DeviceRootPath => _descriptor.VolumeRootPath;
+
+    /// <summary>
+    /// 同步下载 MTP 文件到目标流。串行化访问 MediaDevice，并在必要时自动重连。
+    /// 供预览、拖拽等多个调用方共享同一把设备锁，避免并发触发 NotConnectedException。
+    /// </summary>
+    /// <param name="mtpObjectId">MTP 对象 ID 或路径。</param>
+    /// <param name="destination">目标输出流。</param>
+    /// <returns>下载是否成功。</returns>
+    public bool DownloadMtpFileTo(string mtpObjectId, Stream destination)
+    {
+        if (string.IsNullOrEmpty(mtpObjectId) || destination == null)
+            return false;
+
+        lock (s_mtpDeviceLock)
+        {
+            MediaDevice? dev = _mtpDevice;
+            if (dev == null)
+                return false;
+
+
+            // 检查并尝试重连
+            bool connected = false;
+            try { connected = dev.IsConnected; } catch { connected = false; }
+            if (!connected)
+            {
+                try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); } catch { /* 忽略 */ }
+                try { connected = dev.IsConnected; } catch { connected = false; }
+                if (!connected)
+                {
+                    // 主连接失效：尝试用 PnP ID 重新解析连接
+                    var fresh = MtpDeviceLister.TryConnectByName(_descriptor.MtpDeviceId ?? "");
+                    if (fresh == null) return false;
+                    try
+                    {
+                        fresh.DownloadFile(mtpObjectId, destination);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                    finally
+                    {
+                        try { fresh.Disconnect(); } catch { /* 忽略 */ }
+                    }
+                }
+            }
+
+            try
+            {
+                dev.DownloadFile(mtpObjectId, destination);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+
 
 
 

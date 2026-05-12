@@ -75,8 +75,15 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
         if (formatIn.cfFormat == CF_FILEGROUPDESCRIPTORW &&
             (formatIn.tymed & TYMED.TYMED_HGLOBAL) != 0)
         {
-            medium.tymed = TYMED.TYMED_HGLOBAL;
-            medium.unionmember = BuildFileGroupDescriptorW(_files);
+            try
+            {
+                medium.tymed = TYMED.TYMED_HGLOBAL;
+                medium.unionmember = BuildFileGroupDescriptorW(_files);
+            }
+            catch
+            {
+                medium = default;
+            }
             return;
         }
 
@@ -85,29 +92,50 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
         {
             int index = formatIn.lindex;
             if (index < 0 || index >= _files.Count)
-                Marshal.ThrowExceptionForHR(unchecked((int)0x80040064)); // DV_E_LINDEX
+            {
+                // 越界：返回空 medium（tymed=NULL）而不抛异常，避免调试器中断
+                return;
+            }
 
-            var stream = new VirtualFileStream(_files[index]);
-            medium.tymed = TYMED.TYMED_ISTREAM;
-            medium.unionmember = Marshal.GetIUnknownForObject(stream);
+            try
+            {
+                var stream = new VirtualFileStream(_files[index]);
+                medium.tymed = TYMED.TYMED_ISTREAM;
+                medium.unionmember = Marshal.GetIUnknownForObject(stream);
+            }
+            catch
+            {
+                medium = default;
+            }
             return;
         }
 
         if (formatIn.cfFormat == CF_PREFERREDDROPEFFECT &&
             (formatIn.tymed & TYMED.TYMED_HGLOBAL) != 0)
         {
-            medium.tymed = TYMED.TYMED_HGLOBAL;
-            medium.unionmember = BuildPreferredDropEffect(_preferredEffect);
+            try
+            {
+                medium.tymed = TYMED.TYMED_HGLOBAL;
+                medium.unionmember = BuildPreferredDropEffect(_preferredEffect);
+            }
+            catch
+            {
+                medium = default;
+            }
             return;
         }
 
-        Marshal.ThrowExceptionForHR(unchecked((int)0x80040064)); // DV_E_FORMATETC
+        // 不支持的格式：返回空 medium。
+        // 严格说 IDataObject 协议要求返回 DV_E_FORMATETC，但抖出异常会被调试器
+        // 拦截为 User-Unhandled。Shell 不依赖此返回值区分成败与否，透过 EnumFormatEtc
+        // 列出的格式列表进行查询。
     }
 
     public void GetDataHere(ref FORMATETC format, ref STGMEDIUM medium)
     {
-        Marshal.ThrowExceptionForHR(unchecked((int)0x80040064));
+        // 不支持 GetDataHere；保持 medium 不变，静默返回。
     }
+
 
     public int QueryGetData(ref FORMATETC format)
     {
@@ -182,8 +210,9 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
 
     public void DUnadvise(int connection)
     {
-        Marshal.ThrowExceptionForHR(unchecked((int)0x80040003));
+        // 不支持 advise，静默忽略
     }
+
 
     public int EnumDAdvise(out IEnumSTATDATA enumAdvise)
     {
@@ -336,40 +365,67 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
 
     // ── 内部：IStream 包装，按需调用 StreamContents 回调 ──
     [ComVisible(true)]
-    private sealed class VirtualFileStream : IStream
+    private sealed class VirtualFileStream : IStream, IDisposable
     {
+        // 进程级串行锁：保护 MediaDevice 等非线程安全资源。
+        // Shell 在 Drop 后会多线程调用不同 IStream 的 Read，需串行化。
+        private static readonly object s_streamProduceLock = new();
+
         private readonly VirtualFileDescriptor _descriptor;
-        private MemoryStream? _buffer;
+        private FileStream? _backing;
+        private string? _backingPath;
         private bool _produced;
+        private bool _disposed;
 
         public VirtualFileStream(VirtualFileDescriptor descriptor)
         {
             _descriptor = descriptor;
         }
 
-        private MemoryStream GetBuffer()
+        private FileStream GetBuffer()
         {
-            if (!_produced)
+            if (_produced && _backing != null)
+                return _backing;
+
+            // 串行化产出：MTP 设备不支持并发访问，同时避免多个拖拽文件互相干扰。
+            lock (s_streamProduceLock)
             {
-                _buffer = new MemoryStream();
+                if (_produced && _backing != null)
+                    return _backing;
+
+                // 使用临时文件作为后备存储，避免大视频 OOM。
+                _backingPath = Path.Combine(Path.GetTempPath(), "MMC_VFD_" + Guid.NewGuid().ToString("N"));
+                FileStream tmp = new(_backingPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read,
+                    bufferSize: 1 << 16, options: FileOptions.DeleteOnClose);
                 try
                 {
-                    _descriptor.StreamContents(_buffer);
+                    _descriptor.StreamContents(tmp);
+                    tmp.Flush();
                 }
                 catch
                 {
-                    // 内容生成失败，返回空流（Shell 会显示 0 字节文件）
+                    // 产出失败：保留已写入部分作为不完整文件。
+                    // Shell 会看到不完整文件，但总比 0 字节出错明显。
                 }
-                _buffer.Position = 0;
+                tmp.Position = 0;
+                _backing = tmp;
                 _produced = true;
+                return _backing;
             }
-            return _buffer!;
         }
 
         public void Read(byte[] pv, int cb, IntPtr pcbRead)
         {
-            var buf = GetBuffer();
-            int read = buf.Read(pv, 0, cb);
+            int read = 0;
+            try
+            {
+                var buf = GetBuffer();
+                read = buf.Read(pv, 0, cb);
+            }
+            catch
+            {
+                read = 0;
+            }
             if (pcbRead != IntPtr.Zero)
                 Marshal.WriteInt32(pcbRead, read);
         }
@@ -382,15 +438,23 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
 
         public void Seek(long dlibMove, int dwOrigin, IntPtr plibNewPosition)
         {
-            var buf = GetBuffer();
-            SeekOrigin origin = dwOrigin switch
+            long pos = 0;
+            try
             {
-                0 => SeekOrigin.Begin,
-                1 => SeekOrigin.Current,
-                2 => SeekOrigin.End,
-                _ => SeekOrigin.Begin,
-            };
-            long pos = buf.Seek(dlibMove, origin);
+                var buf = GetBuffer();
+                SeekOrigin origin = dwOrigin switch
+                {
+                    0 => SeekOrigin.Begin,
+                    1 => SeekOrigin.Current,
+                    2 => SeekOrigin.End,
+                    _ => SeekOrigin.Begin,
+                };
+                pos = buf.Seek(dlibMove, origin);
+            }
+            catch
+            {
+                pos = 0;
+            }
             if (plibNewPosition != IntPtr.Zero)
                 Marshal.WriteInt64(plibNewPosition, pos);
         }
@@ -399,28 +463,35 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
 
         public void CopyTo(IStream pstm, long cb, IntPtr pcbRead, IntPtr pcbWritten)
         {
-            var buf = GetBuffer();
-            long remaining = cb;
-            byte[] tmp = new byte[81920];
             long readTotal = 0;
             long writeTotal = 0;
-            while (remaining > 0)
+            try
             {
-                int chunk = (int)Math.Min(remaining, tmp.Length);
-                int read = buf.Read(tmp, 0, chunk);
-                if (read <= 0) break;
-                readTotal += read;
-                IntPtr written = Marshal.AllocHGlobal(sizeof(int));
-                try
+                var buf = GetBuffer();
+                long remaining = cb;
+                byte[] tmp = new byte[81920];
+                while (remaining > 0)
                 {
-                    pstm.Write(tmp, read, written);
-                    writeTotal += Marshal.ReadInt32(written);
+                    int chunk = (int)Math.Min(remaining, tmp.Length);
+                    int read = buf.Read(tmp, 0, chunk);
+                    if (read <= 0) break;
+                    readTotal += read;
+                    IntPtr written = Marshal.AllocHGlobal(sizeof(int));
+                    try
+                    {
+                        pstm.Write(tmp, read, written);
+                        writeTotal += Marshal.ReadInt32(written);
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(written);
+                    }
+                    remaining -= read;
                 }
-                finally
-                {
-                    Marshal.FreeHGlobal(written);
-                }
-                remaining -= read;
+            }
+            catch
+            {
+                // 忽略中间错误。
             }
             if (pcbRead != IntPtr.Zero) Marshal.WriteInt64(pcbRead, readTotal);
             if (pcbWritten != IntPtr.Zero) Marshal.WriteInt64(pcbWritten, writeTotal);
@@ -432,20 +503,26 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
 
         public void LockRegion(long libOffset, long cb, int dwLockType)
         {
-            Marshal.ThrowExceptionForHR(unchecked((int)0x80030001)); // STG_E_INVALIDFUNCTION
+            // 不支持锁定区域，静默忽略。
         }
 
         public void UnlockRegion(long libOffset, long cb, int dwLockType)
         {
-            Marshal.ThrowExceptionForHR(unchecked((int)0x80030001));
+            // 不支持锁定区域，静默忽略。
         }
+
 
         public void Stat(out STATSTG pstatstg, int grfStatFlag)
         {
+            long size = _descriptor.Length;
+            if (size < 0)
+            {
+                try { size = _backing?.Length ?? 0; } catch { size = 0; }
+            }
             pstatstg = new STATSTG
             {
                 type = 2, // STGTY_STREAM
-                cbSize = _descriptor.Length >= 0 ? _descriptor.Length : (_buffer?.Length ?? 0),
+                cbSize = size,
                 pwcsName = (grfStatFlag & 1) == 0 ? _descriptor.Name : null!,
             };
         }
@@ -453,10 +530,29 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
         public void Clone(out IStream ppstm)
         {
             ppstm = null!;
-            Marshal.ThrowExceptionForHR(unchecked((int)0x80030001));
+            // 不支持 Clone，返回 null 代替抛异常
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            try { _backing?.Dispose(); } catch { /* 忽略 */ }
+            _backing = null;
+            // FileOptions.DeleteOnClose 会自动清理，但为保险起见额外尝试。
+            if (!string.IsNullOrEmpty(_backingPath))
+            {
+                try { if (File.Exists(_backingPath)) File.Delete(_backingPath); } catch { /* 忽略 */ }
+            }
+        }
+
+        ~VirtualFileStream()
+        {
+            Dispose();
         }
     }
 }
+
 
 // 临时占位（避免在文件顶部 using System.Windows）：使用全限定名 + 别名
 // 该类使用 System.Windows 命名空间中的 DataFormats 与 DragDropEffects。

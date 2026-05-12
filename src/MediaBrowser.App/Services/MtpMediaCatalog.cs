@@ -238,21 +238,26 @@ public static class MtpMediaCatalog
     /// </summary>
     private static DateTime? TryGetFileTimeUtc(MediaDevice device, string path)
     {
-        try
+        // 与缩略图、预览、拖拽、复制等共享 MtpDeviceLister.DeviceAccessLock，串行化所有 MTP 设备访问。
+        lock (MtpDeviceLister.DeviceAccessLock)
         {
-            var info = device.GetFileInfo(path);
-            // 优先使用 LastWriteTime，其次 CreationTime
-            if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
-                return info.LastWriteTime.Value.ToUniversalTime();
-            if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
-                return info.CreationTime.Value.ToUniversalTime();
+            try
+            {
+                var info = device.GetFileInfo(path);
+                // 优先使用 LastWriteTime，其次 CreationTime
+                if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
+                    return info.LastWriteTime.Value.ToUniversalTime();
+                if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
+                    return info.CreationTime.Value.ToUniversalTime();
+            }
+            catch
+            {
+                // GetFileInfo 可能抛出 COM 异常，忽略
+            }
+            return null;
         }
-        catch
-        {
-            // GetFileInfo 可能抛出 COM 异常，忽略
-        }
-        return null;
     }
+
 
     /// <summary>
 

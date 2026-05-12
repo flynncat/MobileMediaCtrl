@@ -45,7 +45,12 @@
   <sys:String x:Key="VM_CopyDone">Done: {0} succeeded, {1} skipped, {2} failed.</sys:String>
   <sys:String x:Key="VM_CopiedToTarget">Copied to target folder:&#x0a;{0}&#x0a;{1} succeeded, {2} skipped, {3} failed.</sys:String>
   <sys:String x:Key="VM_ExternalDropDone">External files have been copied to the target folder.</sys:String>
+  <sys:String x:Key="VM_ExternalDropDoneDetailed">External files have been copied to:&#x0a;{0}&#x0a;Succeeded {1}, skipped {2}, failed {3}.</sys:String>
+  <sys:String x:Key="VM_ExternalDropMtpUnsupported">The current device is a phone (MTP). Writing files to the phone is not supported. Please use the computer's file explorer to copy files to the phone.</sys:String>
+  <sys:String x:Key="VM_ExternalDropNoTarget">Cannot find a target path for the current device, copy aborted.</sys:String>
+
   <sys:String x:Key="VM_Done">Done</sys:String>
+
   <sys:String x:Key="VM_ExportFolderNotExist">Export folder does not exist. Please set a valid target path first.</sys:String>
   <sys:String x:Key="VM_OpenFolderFailed">Failed to open folder: {0}</sys:String>
   <sys:String x:Key="VM_PreparingDrag">Preparing files, please wait...</sys:String>

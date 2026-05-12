@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using MediaBrowser.App.Services;
+using MediaBrowser.App.ViewModels;
 using MediaBrowser.Core.Models;
-using MediaDevices;
 
 
 namespace MediaBrowser.App.Views;
@@ -27,9 +27,9 @@ public partial class PreviewWindow : Window
 
 
     /// <summary>
-    /// 加载并预览指定的媒体项。
+    /// 加载并预览指定的媒体项。通过 ViewModel 串行访问 MTP 设备，避免与拖拽等并发冲突。
     /// </summary>
-    public async Task LoadMediaAsync(MediaItem item, MediaDevice? mtpDevice)
+    public async Task LoadMediaAsync(MediaItem item, MediaWindowViewModel vm)
     {
         Title = item.DisplayName;
         OnPropertyChanged(nameof(Title));
@@ -42,16 +42,24 @@ public partial class PreviewWindow : Window
             {
                 filePath = item.FileSystemPath;
             }
-            else if (item.SourceKind == MediaSourceKind.Mtp && mtpDevice != null && !string.IsNullOrEmpty(item.MtpObjectId))
+            else if (item.SourceKind == MediaSourceKind.Mtp && !string.IsNullOrEmpty(item.MtpObjectId))
             {
-                // 从MTP设备下载到临时文件
+                // 从 MTP 设备下载到临时文件（通过 VM 串行化访问，避免与拖拽并发冲突）
                 var tempDir = Path.Combine(Path.GetTempPath(), "MediaBrowserPreview");
                 Directory.CreateDirectory(tempDir);
                 filePath = Path.Combine(tempDir, item.DisplayName);
 
+                bool ok = false;
                 await using (var fs = File.Create(filePath))
                 {
-                    await Task.Run(() => mtpDevice.DownloadFile(item.MtpObjectId!, fs)).ConfigureAwait(true);
+                    ok = await Task.Run(() => vm.DownloadMtpFileTo(item.MtpObjectId!, fs)).ConfigureAwait(true);
+                }
+
+                if (!ok)
+                {
+                    LoadingText.Text = LanguageManager.GetString("Preview_CannotPreview");
+                    try { File.Delete(filePath); } catch { /* 忽略 */ }
+                    return;
                 }
 
                 _tempFilePath = filePath;
@@ -78,6 +86,7 @@ public partial class PreviewWindow : Window
 
         }
     }
+
 
     private void ShowImage(string filePath)
     {

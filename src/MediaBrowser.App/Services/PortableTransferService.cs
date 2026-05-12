@@ -55,12 +55,19 @@ public static class PortableTransferService
                 await using (var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None,
                                bufferSize: 1 << 16, useAsync: true))
                 {
-                    await Task.Run(() => mtpDevice.DownloadFile(item.MtpObjectId!, fs), cancellationToken)
-                        .ConfigureAwait(false);
+                    // 串行化访问 MTP 设备，与缩略图/拖拽/预览共用同一把锁，避免并发触发 NotConnectedException。
+                    await Task.Run(() =>
+                    {
+                        lock (MtpDeviceLister.DeviceAccessLock)
+                        {
+                            mtpDevice.DownloadFile(item.MtpObjectId!, fs);
+                        }
+                    }, cancellationToken).ConfigureAwait(false);
                 }
 
                 success++;
             }
+
             catch (Exception ex)
             {
                 failed++;

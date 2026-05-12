@@ -63,21 +63,26 @@ public sealed class ThumbnailLoader
                 !string.IsNullOrEmpty(item.MtpObjectId))
             {
                 // 优先尝试 DownloadThumbnail（速度快），失败则回退下载原文件生成缩略图
+                // 所有针对 mtpDevice 的调用都需在 DeviceAccessLock 内串行化，避免与拖拽/预览/复制并发导致 NotConnectedException。
                 var thumbData = await Task.Run(() =>
                 {
-                    try
+                    lock (MtpDeviceLister.DeviceAccessLock)
                     {
-                        using var ms = new MemoryStream();
-                        mtpDevice.DownloadThumbnail(item.MtpObjectId!, ms);
-                        if (ms.Length > 0)
-                            return ms.ToArray();
+                        try
+                        {
+                            using var ms = new MemoryStream();
+                            mtpDevice.DownloadThumbnail(item.MtpObjectId!, ms);
+                            if (ms.Length > 0)
+                                return ms.ToArray();
+                        }
+                        catch
+                        {
+                            // DownloadThumbnail 不可用（0x8007138E 等），忽略
+                        }
+                        return null;
                     }
-                    catch
-                    {
-                        // DownloadThumbnail 不可用（0x8007138E 等），忽略
-                    }
-                    return null;
                 }, cancellationToken).ConfigureAwait(false);
+
 
                 if (thumbData is { Length: > 0 })
                 {
@@ -267,9 +272,13 @@ public sealed class ThumbnailLoader
                 Directory.CreateDirectory(tempDir);
                 var tempPath = Path.Combine(tempDir, item.DisplayName);
 
-                using var fs = File.Create(tempPath);
-                mtpDevice.DownloadFile(item.MtpObjectId!, fs);
-                return fs.Length > 0 ? tempPath : null;
+                // 串行化 MTP 设备访问，与拖拽/预览等其他调用方共享同一把锁。
+                lock (MtpDeviceLister.DeviceAccessLock)
+                {
+                    using var fs = File.Create(tempPath);
+                    mtpDevice.DownloadFile(item.MtpObjectId!, fs);
+                    return fs.Length > 0 ? tempPath : null;
+                }
             }
             catch
             {
@@ -277,6 +286,7 @@ public sealed class ThumbnailLoader
             }
         }, cancellationToken).ConfigureAwait(false);
     }
+
 
     // ── 辅助方法 ──
 
