@@ -293,19 +293,17 @@ public partial class MediaWindow : Window
 
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
-        // 检测是否拖拽到自身窗口（误操作）
-        if (e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
+        // 检测是否从本窗口发起的拖拽（通过进程内静态变量判断，不污染 DataObject）
+        if (InternalDragFormats.ActiveDragSourceWindowId == InstanceId)
         {
-            var sourceId = e.Data.GetData(InternalDragFormats.SourceWindowId) as string;
-            if (sourceId == InstanceId)
-            {
-                e.Effects = System.Windows.DragDropEffects.None;
-                e.Handled = true;
-                return;
-            }
+            // 拖回自身窗口时显示禁止符号
+            e.Effects = System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
         }
 
-        if (e.Data.GetDataPresent(InternalDragFormats.MediaItems) ||
+        // 接受从其他窗口或外部应用拖入的文件
+        if (InternalDragFormats.ActiveDragMediaItemsJson != null ||
             e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
             e.Effects = System.Windows.DragDropEffects.Copy;
@@ -313,27 +311,24 @@ public partial class MediaWindow : Window
         }
     }
 
+
     private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
     {
         // 拖拽到自身窗口时忽略（误操作）
-        if (e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
+        if (InternalDragFormats.ActiveDragSourceWindowId == InstanceId)
         {
-            var sourceId = e.Data.GetData(InternalDragFormats.SourceWindowId) as string;
-            if (sourceId == InstanceId)
-            {
-                e.Handled = true;
-                return;
-            }
-        }
-
-        if (e.Data.GetDataPresent(InternalDragFormats.MediaItems))
-        {
-            var json = e.Data.GetData(InternalDragFormats.MediaItems) as string;
-            if (!string.IsNullOrWhiteSpace(json))
-                await _vm.HandleInternalDropAsync(json).ConfigureAwait(true);
             e.Handled = true;
             return;
         }
+
+        // 从其他 MediaWindow 拖入的内部数据
+        if (InternalDragFormats.ActiveDragMediaItemsJson is { } json && !string.IsNullOrWhiteSpace(json))
+        {
+            await _vm.HandleInternalDropAsync(json).ConfigureAwait(true);
+            e.Handled = true;
+            return;
+        }
+
 
         if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) &&
             e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] paths)
@@ -401,9 +396,10 @@ public partial class MediaWindow : Window
 
         var data = new System.Windows.DataObject();
 
-        // 附带源窗口标识，用于检测拖拽到自身窗口的误操作
-        data.SetData(InternalDragFormats.SourceWindowId, InstanceId);
-        data.SetData(InternalDragFormats.MediaItems, JsonSerializer.Serialize(records, MediaDragJson.Options));
+        // 通过进程内静态变量传递内部拖放信息（不放入 DataObject，避免跨进程 OLE 序列化问题）
+        InternalDragFormats.ActiveDragSourceWindowId = InstanceId;
+        InternalDragFormats.ActiveDragMediaItemsJson = JsonSerializer.Serialize(records, MediaDragJson.Options);
+
 
         // 同步准备 Shell 拖拽路径（必须同步，否则 DoDragDrop 无法在鼠标按下状态启动）
         IReadOnlyList<string> shellPaths;
@@ -429,16 +425,31 @@ public partial class MediaWindow : Window
         }
 
         if (shellPaths.Count > 0)
-            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray(), autoConvert: true);
+        {
+            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
+        }
+        else
+        {
+            // shellPaths 为空时不启动拖放
+            InternalDragFormats.ClearDragState();
+            return;
+        }
 
         try
         {
-            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
+            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy | System.Windows.DragDropEffects.Move);
         }
         catch
         {
             // 忽略拖放被取消
         }
+        finally
+        {
+            InternalDragFormats.ClearDragState();
+        }
+
+
+
     }
 
 
