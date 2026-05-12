@@ -747,61 +747,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                     // 此回调由 OLE Shell 在 Drop 后调用（通常在 STA/RPC 线程），
                     // 多个文件的 IStream::Read 会并发触发本回调；
                     // 而 MediaDevice 不是线程安全的，因此在锁内串行下载。
-                    lock (s_mtpDeviceLock)
-
-                    {
-                        MediaDevice? dev = _mtpDevice;
-                        bool needDisconnect = false;
-
-                        // 如果当前设备已断开或不是同一设备，则尝试新建临时连接。
-                        bool sameDevice = string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase);
-                        bool deviceUsable = false;
-                        if (sameDevice && dev != null)
-                        {
-                            try { deviceUsable = dev.IsConnected; }
-                            catch { deviceUsable = false; }
-                        }
-
-                        if (!deviceUsable)
-                        {
-                            // 主设备不可用：尝试用 PnP 名重连。优先复用 _mtpDevice 引用。
-                            if (sameDevice && dev != null)
-                            {
-                                try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); }
-                                catch { /* 忽略，下面尝试新建 */ }
-                                try { deviceUsable = dev.IsConnected; }
-                                catch { deviceUsable = false; }
-                            }
-
-                            if (!deviceUsable)
-                            {
-                                dev = MtpDeviceLister.TryConnectByName(pnpId ?? "");
-                                needDisconnect = dev != null;
-                            }
-                        }
-
-                        if (dev == null)
-                            return; // 无设备可用：返回空流，Shell 会写出 0 字节文件
-
-                        try
-                        {
-                            // 关键：DownloadFile 必须在锁内同步完成，写入 stream 后再返回。
-                            dev.DownloadFile(mtpPath, stream);
-                        }
-                        catch
-                        {
-                            // 单文件下载失败：写入到 stream 的部分内容保留为不完整文件。
-                            // 不向上抛出，避免连锁影响其他文件。
-                        }
-                        finally
-                        {
-                            if (needDisconnect)
-                            {
-                                try { dev.Disconnect(); } catch { /* 忽略 */ }
-                            }
-                        }
-                    }
+                    // 关键修复：使用带预热与重试的下载，避免设备首次 DownloadFile 失败导致 0 字节文件。
+                    DownloadMtpToStreamWithRetry(stream, mtpPath, pnpId, localPnpId);
                 },
+
             });
 
         }
@@ -828,55 +777,111 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     /// <returns>下载是否成功。</returns>
     public bool DownloadMtpFileTo(string mtpObjectId, Stream destination)
     {
-        if (string.IsNullOrEmpty(mtpObjectId) || destination == null)
+        return DownloadMtpToStreamWithRetry(destination, mtpObjectId, _descriptor.MtpDeviceId, _descriptor.MtpDeviceId);
+    }
+
+    /// <summary>
+    /// 带预热与重试的 MTP 下载：解决"未预览过的文件直接拖拽得到 0 字节"问题。
+    /// 现象根因：MediaDevice 首次访问某个对象时，COM 内部状态可能未完成初始化，
+    /// 直接 DownloadFile 会抛 NotConnectedException 等异常；如果该异常被吞掉，stream 就保持空。
+    /// 修复策略：
+    ///   1) 预热：先调用 GetFileInfo 触发 COM 初始化（这正是预览/缩略图执行后再拖拽就 OK 的原因）；
+    ///   2) DownloadFile 失败时，重新连接并重试，最多 3 次；
+    ///   3) 重试前清空已写入的 stream，避免拼接出损坏文件。
+    /// </summary>
+    /// <param name="stream">目标输出流。</param>
+    /// <param name="mtpPath">MTP 对象 ID 或路径。</param>
+    /// <param name="recordPnpId">拖拽记录中的 PnP ID（可能与当前设备不同）。</param>
+    /// <param name="currentPnpId">当前 ViewModel 关联设备的 PnP ID。</param>
+    /// <returns>是否下载成功。</returns>
+    private bool DownloadMtpToStreamWithRetry(Stream stream, string mtpPath, string? recordPnpId, string? currentPnpId)
+    {
+        if (stream == null || string.IsNullOrEmpty(mtpPath))
             return false;
+
+        const int MaxAttempts = 3;
+        bool sameDevice = string.Equals(recordPnpId, currentPnpId, StringComparison.OrdinalIgnoreCase);
 
         lock (s_mtpDeviceLock)
         {
-            MediaDevice? dev = _mtpDevice;
-            if (dev == null)
-                return false;
-
-
-            // 检查并尝试重连
-            bool connected = false;
-            try { connected = dev.IsConnected; } catch { connected = false; }
-            if (!connected)
+            for (int attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); } catch { /* 忽略 */ }
-                try { connected = dev.IsConnected; } catch { connected = false; }
-                if (!connected)
+                MediaDevice? dev = sameDevice ? _mtpDevice : null;
+                bool needDisconnect = false;
+
+                // —— 1. 准备一个可用的 MediaDevice ——
+                bool deviceUsable = false;
+                if (dev != null)
                 {
-                    // 主连接失效：尝试用 PnP ID 重新解析连接
-                    var fresh = MtpDeviceLister.TryConnectByName(_descriptor.MtpDeviceId ?? "");
-                    if (fresh == null) return false;
-                    try
+                    try { deviceUsable = dev.IsConnected; } catch { deviceUsable = false; }
+                    if (!deviceUsable)
                     {
-                        fresh.DownloadFile(mtpObjectId, destination);
-                        return true;
-                    }
-                    catch
-                    {
-                        return false;
-                    }
-                    finally
-                    {
-                        try { fresh.Disconnect(); } catch { /* 忽略 */ }
+                        try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); } catch { /* 忽略 */ }
+                        try { deviceUsable = dev.IsConnected; } catch { deviceUsable = false; }
                     }
                 }
-            }
+                if (!deviceUsable)
+                {
+                    dev = MtpDeviceLister.TryConnectByName(recordPnpId ?? currentPnpId ?? "");
+                    needDisconnect = dev != null;
+                    deviceUsable = dev != null;
+                }
 
-            try
-            {
-                dev.DownloadFile(mtpObjectId, destination);
-                return true;
+                if (!deviceUsable || dev == null)
+                {
+                    // 整个 MTP 子系统连接不上：直接放弃，没必要重试。
+                    return false;
+                }
+
+                try
+                {
+                    // —— 2. 预热：GetFileInfo 帮助 MediaDevice 完成对象的内部初始化 ——
+                    // 这是修复"未预览直接拖拽 0 字节"的关键步骤。
+                    try { _ = dev.GetFileInfo(mtpPath); }
+                    catch { /* 预热失败不致命，继续尝试 DownloadFile */ }
+
+                    // —— 3. 重试前重置流位置，避免重复内容 ——
+                    if (attempt > 1)
+                    {
+                        try
+                        {
+                            if (stream.CanSeek)
+                            {
+                                stream.Position = 0;
+                                stream.SetLength(0);
+                            }
+                        }
+                        catch { /* 流可能不支持 SetLength（如 Shell 提供的 IStream），忽略 */ }
+                    }
+
+                    // —— 4. 真正下载 ——
+                    dev.DownloadFile(mtpPath, stream);
+                    try { stream.Flush(); } catch { /* 忽略 */ }
+                    return true;
+                }
+                catch
+                {
+                    // 本次失败：断开当前临时连接由 finally 统一处理。
+                    // 短暂等待让设备恢复（最后一次不等待）。
+                    if (attempt < MaxAttempts)
+                    {
+                        try { System.Threading.Thread.Sleep(120 * attempt); } catch { /* 忽略 */ }
+                    }
+                    continue;
+                }
+                finally
+                {
+                    if (needDisconnect)
+                    {
+                        try { dev.Disconnect(); } catch { /* 忽略 */ }
+                    }
+                }
+
             }
-            catch
-            {
-                return false;
-            }
+            return false;
         }
     }
+
 
 
 
