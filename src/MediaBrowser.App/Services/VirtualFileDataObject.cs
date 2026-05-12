@@ -266,12 +266,15 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
                     cFileName = f.Name ?? "file",
                 };
 
-                if (f.Length >= 0)
+                if (f.Length > 0)
                 {
+                    // 仅在已知"真实大小"（>0）时才告诉 Shell；
+                    // 对 Length=0 或未知的情况不设置 FD_FILESIZE，避免 Shell 直接当 0 字节空文件处理而跳过 IStream::Read。
                     d.dwFlags |= FD_FILESIZE;
                     d.nFileSizeLow = (uint)(f.Length & 0xFFFFFFFF);
                     d.nFileSizeHigh = (uint)((f.Length >> 32) & 0xFFFFFFFF);
                 }
+
 
                 if (f.LastWriteTimeUtc is DateTime t)
                 {
@@ -393,26 +396,32 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
                 if (_produced && _backing != null)
                     return _backing;
 
+                DragDiagLogger.Log("VStream", $"GetBuffer 开始产出：{_descriptor.Name}");
                 // 使用临时文件作为后备存储，避免大视频 OOM。
                 _backingPath = Path.Combine(Path.GetTempPath(), "MMC_VFD_" + Guid.NewGuid().ToString("N"));
                 FileStream tmp = new(_backingPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read,
                     bufferSize: 1 << 16, options: FileOptions.DeleteOnClose);
+                long writtenBytes = 0;
                 try
                 {
                     _descriptor.StreamContents(tmp);
                     tmp.Flush();
+                    writtenBytes = tmp.Length;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    DragDiagLogger.LogError("VStream", $"StreamContents 抛异常：{_descriptor.Name}", ex);
                     // 产出失败：保留已写入部分作为不完整文件。
                     // Shell 会看到不完整文件，但总比 0 字节出错明显。
                 }
                 tmp.Position = 0;
                 _backing = tmp;
                 _produced = true;
+                DragDiagLogger.Log("VStream", $"GetBuffer 完成：{_descriptor.Name}, 实际字节 {writtenBytes}");
                 return _backing;
             }
         }
+
 
         public void Read(byte[] pv, int cb, IntPtr pcbRead)
         {
@@ -525,7 +534,9 @@ public sealed class VirtualFileDataObject : ComTypes.IDataObject
                 cbSize = size,
                 pwcsName = (grfStatFlag & 1) == 0 ? _descriptor.Name : null!,
             };
+            DragDiagLogger.Log("VStream", $"Stat 被调用：{_descriptor.Name}, 报告 size={size}");
         }
+
 
         public void Clone(out IStream ppstm)
         {

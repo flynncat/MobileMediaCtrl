@@ -662,6 +662,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         var list = new List<VirtualFileDescriptor>();
         var localDevice = _mtpDevice; // 捕获当前设备引用
         var localPnpId = _descriptor.MtpDeviceId;
+        DragDiagLogger.Log("Build", $"开始构建虚拟描述符，记录数 {records.Count}, localPnpId='{localPnpId}'");
+
 
         foreach (var r in records)
         {
@@ -724,7 +726,16 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                             var info = localDevice.GetFileInfo(mtpPath);
                             if (info != null)
                             {
-                                try { mtpSize = (long)info.Length; } catch { /* 部分驱动不支持 */ }
+                                try
+                                {
+                                    var len = (long)info.Length;
+                                    // 关键修复：部分 MTP 驱动（特别是 Android 视频）会返回 Length=0；
+                                    // 若直接把 0 传给 Shell，Shell 会认为这是一个 0 字节的空文件，
+                                    // 直接生成空文件且根本不调用 IStream::Read，导致拖出来的文件是 0 字节损坏。
+                                    // 因此 0 视为"未知"(-1)，让 Shell 不带 FD_FILESIZE 标志、按真实流读取。
+                                    mtpSize = len > 0 ? len : -1;
+                                }
+                                catch { /* 部分驱动不支持 */ }
                                 if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
                                     mtpTime = info.LastWriteTime.Value.ToUniversalTime();
                                 else if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
@@ -734,6 +745,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                     }
                     catch { /* 忽略：预获取失败不影响主流程 */ }
                 }
+
             }
 
 
@@ -748,10 +760,14 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                     // 多个文件的 IStream::Read 会并发触发本回调；
                     // 而 MediaDevice 不是线程安全的，因此在锁内串行下载。
                     // 关键修复：使用带预热与重试的下载，避免设备首次 DownloadFile 失败导致 0 字节文件。
-                    DownloadMtpToStreamWithRetry(stream, mtpPath, pnpId, localPnpId);
+                    DragDiagLogger.Log("Stream", $"Shell 触发 StreamContents：{displayName}");
+                    var ok = DownloadMtpToStreamWithRetry(stream, mtpPath, pnpId, localPnpId);
+                    DragDiagLogger.Log("Stream", $"StreamContents 返回 ok={ok}：{displayName}");
                 },
 
             });
+            DragDiagLogger.Log("Build", $"添加 MTP 描述符：{displayName}, mtpPath='{mtpPath}', size={mtpSize}");
+
 
         }
 
@@ -797,10 +813,16 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     private bool DownloadMtpToStreamWithRetry(Stream stream, string mtpPath, string? recordPnpId, string? currentPnpId)
     {
         if (stream == null || string.IsNullOrEmpty(mtpPath))
+        {
+            DragDiagLogger.Log("Download", $"参数无效 mtpPath='{mtpPath ?? "<null>"}' streamNull={stream == null}");
             return false;
+        }
 
         const int MaxAttempts = 3;
         bool sameDevice = string.Equals(recordPnpId, currentPnpId, StringComparison.OrdinalIgnoreCase);
+        DragDiagLogger.Log("Download", $"开始下载 mtpPath='{mtpPath}' sameDevice={sameDevice}");
+        long startBytes = 0;
+        try { startBytes = stream.CanSeek ? stream.Position : 0; } catch { /* 忽略 */ }
 
         lock (s_mtpDeviceLock)
         {
@@ -825,10 +847,12 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                     dev = MtpDeviceLister.TryConnectByName(recordPnpId ?? currentPnpId ?? "");
                     needDisconnect = dev != null;
                     deviceUsable = dev != null;
+                    DragDiagLogger.Log("Download", $"#{attempt} 主设备不可用，临时连接结果 ok={deviceUsable}");
                 }
 
                 if (!deviceUsable || dev == null)
                 {
+                    DragDiagLogger.Log("Download", $"#{attempt} 没有可用的 MediaDevice，放弃");
                     // 整个 MTP 子系统连接不上：直接放弃，没必要重试。
                     return false;
                 }
@@ -836,9 +860,19 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 try
                 {
                     // —— 2. 预热：GetFileInfo 帮助 MediaDevice 完成对象的内部初始化 ——
-                    // 这是修复"未预览直接拖拽 0 字节"的关键步骤。
-                    try { _ = dev.GetFileInfo(mtpPath); }
-                    catch { /* 预热失败不致命，继续尝试 DownloadFile */ }
+                    long preheatLen = -1;
+                    try
+                    {
+                        var info = dev.GetFileInfo(mtpPath);
+                        if (info != null)
+                        {
+                            try { preheatLen = (long)info.Length; } catch { /* 忽略 */ }
+                        }
+                    }
+                    catch (Exception exGfi)
+                    {
+                        DragDiagLogger.LogError("Download", $"#{attempt} GetFileInfo 抛异常", exGfi);
+                    }
 
                     // —— 3. 重试前重置流位置，避免重复内容 ——
                     if (attempt > 1)
@@ -847,20 +881,39 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                         {
                             if (stream.CanSeek)
                             {
-                                stream.Position = 0;
-                                stream.SetLength(0);
+                                stream.Position = startBytes;
+                                stream.SetLength(startBytes);
                             }
                         }
                         catch { /* 流可能不支持 SetLength（如 Shell 提供的 IStream），忽略 */ }
                     }
 
                     // —— 4. 真正下载 ——
+                    DragDiagLogger.Log("Download", $"#{attempt} 调用 DownloadFile，预获取大小 {preheatLen}");
                     dev.DownloadFile(mtpPath, stream);
                     try { stream.Flush(); } catch { /* 忽略 */ }
+
+                    long writtenBytes = -1;
+                    try { writtenBytes = stream.CanSeek ? stream.Position - startBytes : -1; } catch { /* 忽略 */ }
+                    DragDiagLogger.Log("Download", $"#{attempt} DownloadFile 成功，已写入 {writtenBytes} 字节");
+
+                    // 如果 stream 可探测且最终写入字节数为 0，视作失败需要重试
+                    if (writtenBytes == 0)
+                    {
+                        DragDiagLogger.Log("Download", $"#{attempt} 写入字节为 0，视为失败");
+                        if (attempt < MaxAttempts)
+                        {
+                            try { System.Threading.Thread.Sleep(150 * attempt); } catch { /* 忽略 */ }
+                            continue;
+                        }
+                        return false;
+                    }
+
                     return true;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    DragDiagLogger.LogError("Download", $"#{attempt} DownloadFile 失败", ex);
                     // 本次失败：断开当前临时连接由 finally 统一处理。
                     // 短暂等待让设备恢复（最后一次不等待）。
                     if (attempt < MaxAttempts)
@@ -878,9 +931,11 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 }
 
             }
+            DragDiagLogger.Log("Download", $"重试 {MaxAttempts} 次后仍失败，放弃");
             return false;
         }
     }
+
 
 
 

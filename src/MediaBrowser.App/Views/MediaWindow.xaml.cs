@@ -470,15 +470,21 @@ public partial class MediaWindow : Window
 
         try
         {
+            DragDiagLogger.Log("Drag", $"=== 启动拖拽 === IsFileSystemDevice={_vm.IsFileSystemDevice}, records.Count={records.Count}");
             if (_vm.IsFileSystemDevice)
             {
                 // 文件系统设备：直接使用真实文件路径 + FileDrop，零延迟、最佳兼容性
                 var fsPaths = _vm.BuildShellDragPathsForFileSystem(records);
                 if (fsPaths.Count == 0)
+                {
+                    DragDiagLogger.Log("Drag", "fsPaths 为空，取消拖拽");
                     return;
+                }
 
                 var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, fsPaths.ToArray());
+                DragDiagLogger.Log("Drag", $"FileDrop 路径数 {fsPaths.Count}，调用 DoDragDrop");
                 DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
+                DragDiagLogger.Log("Drag", "DoDragDrop 返回（FileDrop）");
             }
             else
             {
@@ -487,21 +493,27 @@ public partial class MediaWindow : Window
                 // 优点：无需预下载，无 UI 卡顿，用户可以拖拽任意大小文件。
                 var descriptors = _vm.BuildVirtualFileDescriptorsForDrag(records);
                 if (descriptors.Count == 0)
+                {
+                    DragDiagLogger.Log("Drag", "descriptors 为空，取消拖拽");
                     return;
+                }
 
                 var virtualData = new VirtualFileDataObject(descriptors, System.Windows.DragDropEffects.Copy);
                 // 关键：显式转型为 ComTypes.IDataObject，调用 DataObject(ComTypes.IDataObject) 构造函数。
                 // 该构造函数会直接把所有调用桥接到底层 IDataObject，从而暴露 FileGroupDescriptorW 等格式。
                 System.Runtime.InteropServices.ComTypes.IDataObject comData = virtualData;
                 var wrapper = new System.Windows.DataObject(comData);
+                DragDiagLogger.Log("Drag", $"VirtualFile 描述符数 {descriptors.Count}，调用 DoDragDrop");
                 DragDrop.DoDragDrop(fe, wrapper, System.Windows.DragDropEffects.Copy);
+                DragDiagLogger.Log("Drag", "DoDragDrop 返回（Virtual）");
 
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 忽略拖放异常
+            DragDiagLogger.LogError("Drag", "拖拽过程中抛异常", ex);
         }
+
         finally
         {
             InternalDragFormats.ClearDragState();
