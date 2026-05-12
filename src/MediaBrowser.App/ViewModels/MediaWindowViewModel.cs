@@ -629,9 +629,133 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// 为拖拽操作构建虚拟文件描述符列表。
+    /// 文件系统记录直接返回真实路径流；MTP 记录使用 lambda 在 Shell 请求时按需下载。
+    /// 这样可以在不预先下载文件的前提下立即启动 OLE 拖放，避免大文件下载导致的 UI 卡顿。
+    /// </summary>
+    public IReadOnlyList<VirtualFileDescriptor> BuildVirtualFileDescriptorsForDrag(IReadOnlyList<MediaDragRecord> records)
+    {
+        var list = new List<VirtualFileDescriptor>();
+        var localDevice = _mtpDevice; // 捕获当前设备引用
+        var localPnpId = _descriptor.MtpDeviceId;
+
+        foreach (var r in records)
+        {
+            if (r.Kind == "fs" && !string.IsNullOrEmpty(r.FsPath))
+            {
+                var fsPath = r.FsPath!;
+                if (!File.Exists(fsPath))
+                    continue;
+
+                long size = -1;
+                DateTime? lwt = null;
+                try
+                {
+                    var fi = new FileInfo(fsPath);
+                    size = fi.Length;
+                    lwt = fi.LastWriteTimeUtc;
+                }
+                catch { /* 忽略 */ }
+
+                list.Add(new VirtualFileDescriptor
+                {
+                    Name = string.IsNullOrWhiteSpace(r.DisplayName) ? Path.GetFileName(fsPath) : r.DisplayName,
+                    Length = size,
+                    LastWriteTimeUtc = lwt,
+                    StreamContents = stream =>
+                    {
+                        try
+                        {
+                            using var src = File.OpenRead(fsPath);
+                            src.CopyTo(stream);
+                        }
+                        catch { /* 忽略单文件失败 */ }
+                    },
+                });
+                continue;
+            }
+
+            if (r.Kind != "mtp" || string.IsNullOrEmpty(r.MtpPath))
+                continue;
+
+            string mtpPath = r.MtpPath!;
+            string? pnpId = r.PnpId;
+            string displayName = string.IsNullOrWhiteSpace(r.DisplayName)
+                ? Path.GetFileName(mtpPath.TrimEnd('\\'))
+                : r.DisplayName;
+
+            // 尝试预获取大小和时间（用于 Shell 进度显示）
+            long mtpSize = -1;
+            DateTime? mtpTime = null;
+            if (localDevice != null && localDevice.IsConnected &&
+                string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var info = localDevice.GetFileInfo(mtpPath);
+                    if (info != null)
+                    {
+                        try { mtpSize = (long)info.Length; } catch { /* 部分驱动不支持 */ }
+                        if (info.LastWriteTime.HasValue && info.LastWriteTime.Value > DateTime.MinValue)
+                            mtpTime = info.LastWriteTime.Value.ToUniversalTime();
+                        else if (info.CreationTime.HasValue && info.CreationTime.Value > DateTime.MinValue)
+                            mtpTime = info.CreationTime.Value.ToUniversalTime();
+                    }
+
+                }
+                catch { /* 忽略 */ }
+            }
+
+            list.Add(new VirtualFileDescriptor
+            {
+                Name = displayName,
+                Length = mtpSize,
+                LastWriteTimeUtc = mtpTime,
+                StreamContents = stream =>
+                {
+                    // 此回调由 OLE Shell 在 Drop 后调用（通常在 STA 线程，可能是后台线程）
+                    // 直接调用 MediaDevice 同步下载，结果写入 stream
+                    try
+                    {
+                        MediaDevice? dev = localDevice;
+                        bool needDisconnect = false;
+                        if (dev == null || !dev.IsConnected ||
+                            !string.Equals(pnpId, localPnpId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            dev = MtpDeviceLister.TryConnectByName(pnpId ?? "");
+                            needDisconnect = dev != null;
+                        }
+                        if (dev == null)
+                            return;
+
+                        try
+                        {
+                            dev.DownloadFile(mtpPath, stream);
+                        }
+                        finally
+                        {
+                            if (needDisconnect)
+                            {
+                                try { dev.Disconnect(); } catch { /* 忽略 */ }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略下载失败
+                    }
+                },
+            });
+        }
+
+        return list;
+    }
+
+    /// <summary>
     /// 判断当前设备是否为文件系统设备（可直接使用文件路径拖拽）。
     /// </summary>
     public bool IsFileSystemDevice => _descriptor.Kind == DeviceKind.RemovableVolume;
+
 
 
     /// <summary>

@@ -361,11 +361,6 @@ public partial class MediaWindow : Window
         }
     }
 
-    // ── MTP 拖拽预下载状态 ──
-    private System.Threading.CancellationTokenSource? _dragPrepareCts;
-    private System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string>>? _dragPrepareTask;
-    private MediaTileViewModel? _dragPrepareTile;
-
     private void Tile_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (IsUnderCheckBox(e.OriginalSource as DependencyObject))
@@ -373,51 +368,16 @@ public partial class MediaWindow : Window
 
         _dragPrepared = true;
         _dragStart = e.GetPosition(null);
-
-        // MTP 设备：在按下鼠标的瞬间就启动后台下载，最大化利用从按下到拖动的时间
-        if (sender is FrameworkElement fe && fe.DataContext is MediaTileViewModel tile)
-        {
-            _dragPrepareTile = tile;
-            CancelDragPrepare();
-
-            if (!_vm.IsFileSystemDevice)
-            {
-                var records = _vm.BuildDragRecordsForDrag(tile.Item);
-                if (records.Count > 0)
-                {
-                    var cts = new System.Threading.CancellationTokenSource();
-                    _dragPrepareCts = cts;
-                    var token = cts.Token;
-                    _dragPrepareTask = System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try
-                        {
-                            return (System.Collections.Generic.IReadOnlyList<string>)
-                                _vm.StageFilesForShellDragSync(records);
-                        }
-                        catch
-                        {
-                            return (System.Collections.Generic.IReadOnlyList<string>)System.Array.Empty<string>();
-                        }
-                    }, token);
-                }
-            }
-        }
+        // 新方案：MTP 设备使用 VirtualFileDataObject 按需下载，无需在按下时预启动后台任务。
     }
 
     private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         _dragPrepared = false;
-        CancelDragPrepare();
     }
 
-    private void CancelDragPrepare()
-    {
-        try { _dragPrepareCts?.Cancel(); } catch { }
-        _dragPrepareCts = null;
-        _dragPrepareTask = null;
-        _dragPrepareTile = null;
-    }
+
+
 
 
     private void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -440,75 +400,41 @@ public partial class MediaWindow : Window
         // 构建拖拽记录：当前拖拽项 + 已勾选项（去重合并）
         var records = _vm.BuildDragRecordsForDrag(tile.Item);
         if (records.Count == 0)
-        {
-            CancelDragPrepare();
             return;
-        }
 
-        // 通过进程内静态变量传递内部拖放信息
+        // 通过进程内静态变量传递内部拖放信息（兼容窗口间内部拖放）
         InternalDragFormats.ActiveDragSourceWindowId = InstanceId;
         InternalDragFormats.ActiveDragMediaItemsJson = JsonSerializer.Serialize(records, MediaDragJson.Options);
 
-        System.Collections.Generic.IReadOnlyList<string> shellPaths;
         try
         {
             if (_vm.IsFileSystemDevice)
             {
-                // 文件系统设备：直接使用真实文件路径，零延迟
-                shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
+                // 文件系统设备：直接使用真实文件路径 + FileDrop，零延迟、最佳兼容性
+                var fsPaths = _vm.BuildShellDragPathsForFileSystem(records);
+                if (fsPaths.Count == 0)
+                    return;
+
+                var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, fsPaths.ToArray());
+                DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
             }
             else
             {
-                // MTP 设备：等待后台下载任务完成。
-                // 由于鼠标按下时已经启动了下载，到这里通常已经完成大部分。
-                var prevCursor = Mouse.OverrideCursor;
-                Mouse.OverrideCursor = System.Windows.Input.Cursors.AppStarting;
-                try
-                {
-                    bool taskMatchesCurrentTile =
-                        _dragPrepareTile != null
-                        && ReferenceEquals(_dragPrepareTile.Item, tile.Item)
-                        && _dragPrepareTask != null;
+                // MTP 设备：使用 VirtualFileDataObject。
+                // 立即启动 OLE 拖放，文件内容在 Shell 调用 IStream::Read 时按需下载。
+                // 优点：无需预下载，无 UI 卡顿，用户可以拖拽任意大小文件。
+                var descriptors = _vm.BuildVirtualFileDescriptorsForDrag(records);
+                if (descriptors.Count == 0)
+                    return;
 
-                    if (taskMatchesCurrentTile)
-                    {
-                        // 等待后台下载完成（消息泵在 DispatcherFrame 中保持运行）
-                        shellPaths = WaitForDragPrepare(_dragPrepareTask!);
-                    }
-                    else
-                    {
-                        // 后台任务不匹配（可能用户按下后未触发预下载），回退到同步下载
-                        shellPaths = _vm.StageFilesForShellDragSync(records);
-                    }
-                }
-                finally
-                {
-                    Mouse.OverrideCursor = prevCursor;
-                }
+                var virtualData = new VirtualFileDataObject(descriptors, System.Windows.DragDropEffects.Copy);
+                // 关键：显式转型为 ComTypes.IDataObject，调用 DataObject(ComTypes.IDataObject) 构造函数。
+                // 该构造函数会直接把所有调用桥接到底层 IDataObject，从而暴露 FileGroupDescriptorW 等格式。
+                System.Runtime.InteropServices.ComTypes.IDataObject comData = virtualData;
+                var wrapper = new System.Windows.DataObject(comData);
+                DragDrop.DoDragDrop(fe, wrapper, System.Windows.DragDropEffects.Copy);
+
             }
-        }
-        catch
-        {
-            shellPaths = System.Array.Empty<string>();
-        }
-        finally
-        {
-            _dragPrepareCts = null;
-            _dragPrepareTask = null;
-            _dragPrepareTile = null;
-        }
-
-        if (shellPaths.Count == 0)
-        {
-            InternalDragFormats.ClearDragState();
-            return;
-        }
-
-        // 使用标准 WPF DragDrop + FileDrop 格式：兼容性最佳，资源管理器、桌面、第三方应用都支持
-        try
-        {
-            var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
-            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
         }
         catch
         {
@@ -520,32 +446,9 @@ public partial class MediaWindow : Window
         }
     }
 
-    /// <summary>
-    /// 在 UI 线程等待后台下载任务完成，期间通过 DispatcherFrame 保持消息泵运行，
-    /// 避免阻塞鼠标事件、以确保 OLE 拖放抓取仍然有效。
-    /// </summary>
-    private static System.Collections.Generic.IReadOnlyList<string> WaitForDragPrepare(
-        System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string>> task)
-    {
-        if (task.IsCompleted)
-            return task.Result;
-
-        var frame = new System.Windows.Threading.DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            System.Threading.Tasks.TaskScheduler.Default);
-        System.Windows.Threading.Dispatcher.PushFrame(frame);
-
-        return task.IsCompletedSuccessfully ? task.Result : System.Array.Empty<string>();
-    }
-
-
-
-
-
-
-
 
     /// <summary>双击缩略图卡片时打开预览窗口。</summary>
+
     private async void Tile_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount != 2)
