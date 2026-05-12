@@ -64,8 +64,13 @@ public sealed class DeviceArrivalCoordinator : IDisposable
         }
     }
 
+    /// <summary>当前已打开的可移动卷的 VolumeLabel 集合，用于排除 MTP 重复检测。</summary>
+    private HashSet<string> _openVolumeLabels = new(StringComparer.OrdinalIgnoreCase);
+
     private void RefreshVolumes()
     {
+        var currentLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var drive in DriveInfo.GetDrives())
         {
             if (drive.DriveType != DriveType.Removable)
@@ -73,22 +78,48 @@ public sealed class DeviceArrivalCoordinator : IDisposable
             if (!drive.IsReady)
                 continue;
 
+            // 记录卷标签，用于后续排除 MTP 重复
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
+                    currentLabels.Add(drive.VolumeLabel);
+            }
+            catch { /* 某些驱动器可能无法读取 VolumeLabel */ }
+
             var root = drive.RootDirectory.FullName;
             var key = MediaWindowRegistry.BuildVolumeSessionKey(root);
             if (MediaWindowRegistry.IsOpen(key))
                 continue;
+
+            // 使用卷标签作为显示名（如果有），否则使用盘符
+            string displayName;
+            try
+            {
+                displayName = !string.IsNullOrWhiteSpace(drive.VolumeLabel)
+                    ? $"{drive.VolumeLabel} ({drive.Name.TrimEnd('\\')})"
+                    : LanguageManager.GetString("Device_UsbDrive", drive.Name.TrimEnd('\\'));
+            }
+            catch
+            {
+                displayName = LanguageManager.GetString("Device_UsbDrive", drive.Name.TrimEnd('\\'));
+            }
 
             var desc = new DeviceSessionDescriptor
             {
                 SessionKey = key,
                 Kind = DeviceKind.RemovableVolume,
                 VolumeRootPath = root,
-                DisplayName = LanguageManager.GetString("Device_UsbDrive", drive.Name.TrimEnd('\\')),
-
+                DisplayName = displayName,
             };
             MediaWindowFactory.OpenForDevice(desc);
         }
+
+        lock (_gate)
+        {
+            _openVolumeLabels = currentLabels;
+        }
     }
+
 
     private void RefreshMtpDevices()
     {
@@ -113,6 +144,22 @@ public sealed class DeviceArrivalCoordinator : IDisposable
                 if (_mtpSnapshot.Contains(name))
                     continue;
 
+                // 如果该 MTP 设备名称与已打开的可移动卷标签匹配，跳过（避免重复弹窗）
+                if (_openVolumeLabels.Contains(name))
+                {
+                    Debug.WriteLine($"[DeviceArrival] 跳过 MTP 设备 '{name}'：已作为可移动卷打开");
+                    _mtpSnapshot.Add(name);
+                    continue;
+                }
+
+                // 额外检查：如果设备名称与当前任何可移动卷的盘符匹配，也跳过
+                if (IsLikelyAlreadyMountedAsVolume(name))
+                {
+                    Debug.WriteLine($"[DeviceArrival] 跳过 MTP 设备 '{name}'：疑似已挂载为可移动卷");
+                    _mtpSnapshot.Add(name);
+                    continue;
+                }
+
                 var sessionKey = MediaWindowRegistry.BuildMtpSessionKey(name);
                 if (MediaWindowRegistry.IsOpen(sessionKey))
                     continue;
@@ -130,6 +177,42 @@ public sealed class DeviceArrivalCoordinator : IDisposable
             _mtpSnapshot = current;
         }
     }
+
+    /// <summary>
+    /// 判断 MTP 设备名称是否可能已经作为可移动卷挂载。
+    /// 通过检查当前所有可移动卷的 VolumeLabel 是否包含该名称（或反向包含）来判断。
+    /// </summary>
+    private bool IsLikelyAlreadyMountedAsVolume(string mtpDeviceName)
+    {
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (drive.DriveType != DriveType.Removable || !drive.IsReady)
+                    continue;
+
+                try
+                {
+                    var label = drive.VolumeLabel;
+                    if (string.IsNullOrWhiteSpace(label))
+                        continue;
+
+                    // 精确匹配或包含关系
+                    if (string.Equals(label, mtpDeviceName, StringComparison.OrdinalIgnoreCase) ||
+                        mtpDeviceName.Contains(label, StringComparison.OrdinalIgnoreCase) ||
+                        label.Contains(mtpDeviceName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                catch { /* 忽略单个驱动器读取失败 */ }
+            }
+        }
+        catch { /* 忽略 */ }
+
+        return false;
+    }
+
 
     public void Dispose()
     {

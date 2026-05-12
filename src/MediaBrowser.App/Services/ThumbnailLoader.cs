@@ -137,20 +137,37 @@ public sealed class ThumbnailLoader
 
     private static void BuildImageThumbnail(string sourcePath, string destPath, int maxEdge)
     {
-        using var img = Image.FromFile(sourcePath, useEmbeddedColorManagement: true);
-        var w = img.Width;
-        var h = img.Height;
-        var scale = Math.Min(1.0, Math.Min((double)maxEdge / w, (double)maxEdge / h));
-        var tw = Math.Max(1, (int)(w * scale));
-        var th = Math.Max(1, (int)(h * scale));
-        using var bmp = new Bitmap(tw, th);
-        using (var g = Graphics.FromImage(bmp))
+        try
         {
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.DrawImage(img, new Rectangle(0, 0, tw, th));
+            using var img = Image.FromFile(sourcePath, useEmbeddedColorManagement: true);
+            var w = img.Width;
+            var h = img.Height;
+            var scale = Math.Min(1.0, Math.Min((double)maxEdge / w, (double)maxEdge / h));
+            var tw = Math.Max(1, (int)(w * scale));
+            var th = Math.Max(1, (int)(h * scale));
+            using var bmp = new Bitmap(tw, th);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(img, new Rectangle(0, 0, tw, th));
+            }
+            bmp.Save(destPath, ImageFormat.Jpeg);
         }
-        bmp.Save(destPath, ImageFormat.Jpeg);
+        catch (OutOfMemoryException)
+        {
+            // GDI+ 对不支持的文件格式（如 .heic、.webp）或损坏文件会抛出 OutOfMemoryException
+            // 回退使用 Shell API 提取缩略图
+            try
+            {
+                BuildVideoThumbnailViaShell(sourcePath, destPath, maxEdge);
+            }
+            catch
+            {
+                // Shell API 也失败则放弃
+            }
+        }
     }
+
 
     /// <summary>
     /// 使用 Windows Shell API (IShellItemImageFactory) 提取视频缩略图。
