@@ -292,13 +292,8 @@ public partial class MediaWindow : Window
 
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
-
         // 检测是否从本窗口发起的拖拽
         bool isFromSelf = InternalDragFormats.ActiveDragSourceWindowId == InstanceId;
-        if (!isFromSelf && e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
-        {
-            isFromSelf = e.Data.GetData(InternalDragFormats.SourceWindowId) as string == InstanceId;
-        }
 
         if (isFromSelf)
         {
@@ -308,7 +303,7 @@ public partial class MediaWindow : Window
             return;
         }
 
-        // 接受从其他窗口或外部应用拖入的文件
+        // 接受从其他 MediaWindow 或外部应用拖入的文件
         if (InternalDragFormats.ActiveDragMediaItemsJson != null ||
             e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
@@ -316,6 +311,7 @@ public partial class MediaWindow : Window
             e.Handled = true;
         }
     }
+
 
     private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
 
@@ -365,6 +361,11 @@ public partial class MediaWindow : Window
         }
     }
 
+    // ── MTP 拖拽预下载状态 ──
+    private System.Threading.CancellationTokenSource? _dragPrepareCts;
+    private System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string>>? _dragPrepareTask;
+    private MediaTileViewModel? _dragPrepareTile;
+
     private void Tile_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (IsUnderCheckBox(e.OriginalSource as DependencyObject))
@@ -372,11 +373,52 @@ public partial class MediaWindow : Window
 
         _dragPrepared = true;
         _dragStart = e.GetPosition(null);
+
+        // MTP 设备：在按下鼠标的瞬间就启动后台下载，最大化利用从按下到拖动的时间
+        if (sender is FrameworkElement fe && fe.DataContext is MediaTileViewModel tile)
+        {
+            _dragPrepareTile = tile;
+            CancelDragPrepare();
+
+            if (!_vm.IsFileSystemDevice)
+            {
+                var records = _vm.BuildDragRecordsForDrag(tile.Item);
+                if (records.Count > 0)
+                {
+                    var cts = new System.Threading.CancellationTokenSource();
+                    _dragPrepareCts = cts;
+                    var token = cts.Token;
+                    _dragPrepareTask = System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try
+                        {
+                            return (System.Collections.Generic.IReadOnlyList<string>)
+                                _vm.StageFilesForShellDragSync(records);
+                        }
+                        catch
+                        {
+                            return (System.Collections.Generic.IReadOnlyList<string>)System.Array.Empty<string>();
+                        }
+                    }, token);
+                }
+            }
+        }
     }
 
-    private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
-
+    private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
         _dragPrepared = false;
+        CancelDragPrepare();
+    }
+
+    private void CancelDragPrepare()
+    {
+        try { _dragPrepareCts?.Cancel(); } catch { }
+        _dragPrepareCts = null;
+        _dragPrepareTask = null;
+        _dragPrepareTile = null;
+    }
+
 
     private void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
@@ -395,31 +437,49 @@ public partial class MediaWindow : Window
 
         _dragPrepared = false;
 
-        var records = _vm.BuildDragRecordsForSelection();
+        // 构建拖拽记录：当前拖拽项 + 已勾选项（去重合并）
+        var records = _vm.BuildDragRecordsForDrag(tile.Item);
         if (records.Count == 0)
         {
-            records = _vm.BuildDragRecords(new[] { tile.Item });
+            CancelDragPrepare();
+            return;
         }
 
         // 通过进程内静态变量传递内部拖放信息
         InternalDragFormats.ActiveDragSourceWindowId = InstanceId;
         InternalDragFormats.ActiveDragMediaItemsJson = JsonSerializer.Serialize(records, MediaDragJson.Options);
 
-        // 同步准备 Shell 拖拽路径
-        IReadOnlyList<string> shellPaths;
+        System.Collections.Generic.IReadOnlyList<string> shellPaths;
         try
         {
             if (_vm.IsFileSystemDevice)
             {
+                // 文件系统设备：直接使用真实文件路径，零延迟
                 shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
             }
             else
             {
+                // MTP 设备：等待后台下载任务完成。
+                // 由于鼠标按下时已经启动了下载，到这里通常已经完成大部分。
                 var prevCursor = Mouse.OverrideCursor;
-                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+                Mouse.OverrideCursor = System.Windows.Input.Cursors.AppStarting;
                 try
                 {
-                    shellPaths = _vm.StageFilesForShellDragSync(records);
+                    bool taskMatchesCurrentTile =
+                        _dragPrepareTile != null
+                        && ReferenceEquals(_dragPrepareTile.Item, tile.Item)
+                        && _dragPrepareTask != null;
+
+                    if (taskMatchesCurrentTile)
+                    {
+                        // 等待后台下载完成（消息泵在 DispatcherFrame 中保持运行）
+                        shellPaths = WaitForDragPrepare(_dragPrepareTask!);
+                    }
+                    else
+                    {
+                        // 后台任务不匹配（可能用户按下后未触发预下载），回退到同步下载
+                        shellPaths = _vm.StageFilesForShellDragSync(records);
+                    }
                 }
                 finally
                 {
@@ -429,42 +489,57 @@ public partial class MediaWindow : Window
         }
         catch
         {
-            shellPaths = Array.Empty<string>();
+            shellPaths = System.Array.Empty<string>();
+        }
+        finally
+        {
+            _dragPrepareCts = null;
+            _dragPrepareTask = null;
+            _dragPrepareTile = null;
         }
 
         if (shellPaths.Count == 0)
         {
-            // 即使没有有效路径，也启动拖放（窗口内显示禁止符号，提示用户操作无效）
-            var emptyData = new System.Windows.DataObject();
-            emptyData.SetData(InternalDragFormats.SourceWindowId, InstanceId);
-            try
-            {
-                DragDrop.DoDragDrop(fe, emptyData, System.Windows.DragDropEffects.Copy);
-            }
-            catch { }
-            finally
-            {
-                InternalDragFormats.ClearDragState();
-            }
+            InternalDragFormats.ClearDragState();
             return;
         }
 
-        // 创建仅包含标准 FileDrop 格式的 DataObject
-        var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
-
+        // 使用标准 WPF DragDrop + FileDrop 格式：兼容性最佳，资源管理器、桌面、第三方应用都支持
         try
         {
-            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy | System.Windows.DragDropEffects.Move);
+            var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
+            DragDrop.DoDragDrop(fe, data, System.Windows.DragDropEffects.Copy);
         }
         catch
         {
-            // 忽略拖放被取消
+            // 忽略拖放异常
         }
         finally
         {
             InternalDragFormats.ClearDragState();
         }
     }
+
+    /// <summary>
+    /// 在 UI 线程等待后台下载任务完成，期间通过 DispatcherFrame 保持消息泵运行，
+    /// 避免阻塞鼠标事件、以确保 OLE 拖放抓取仍然有效。
+    /// </summary>
+    private static System.Collections.Generic.IReadOnlyList<string> WaitForDragPrepare(
+        System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string>> task)
+    {
+        if (task.IsCompleted)
+            return task.Result;
+
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        task.ContinueWith(_ => frame.Continue = false,
+            System.Threading.Tasks.TaskScheduler.Default);
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+
+        return task.IsCompletedSuccessfully ? task.Result : System.Array.Empty<string>();
+    }
+
+
+
 
 
 

@@ -34,6 +34,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     /// <summary>当前连接的MTP设备（预览时需要用来下载文件）。</summary>
     public MediaDevice? MtpDevice => _mtpDevice;
 
+    /// <summary>设备的 PnP ID（MTP）或卷路径（文件系统），用于拖放时识别同源设备。</summary>
+    public string? DeviceId => _descriptor.MtpDeviceId ?? _descriptor.VolumeRootPath;
+
+
     private string _currentDropTargetPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     private string _statusText = LanguageManager.GetString("VM_Loading");
     private bool _isBusy;
@@ -373,6 +377,36 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             .Select(t => ToRecord(t.Item))
             .ToList();
     }
+
+    /// <summary>
+    /// 构建拖拽记录：将当前拖拽项与已勾选项合并（去重）。
+    /// 如果当前项未勾选，也会被包含在内。
+    /// </summary>
+    public IReadOnlyList<MediaDragRecord> BuildDragRecordsForDrag(MediaItem draggedItem)
+    {
+        var seen = new HashSet<string>();
+        var result = new List<MediaDragRecord>();
+
+        // 先加入当前拖拽项
+        var dragRecord = ToRecord(draggedItem);
+        var dragKey = dragRecord.Kind == "fs" ? dragRecord.FsPath : dragRecord.MtpPath;
+        if (dragKey != null)
+            seen.Add(dragKey);
+        result.Add(dragRecord);
+
+        // 再加入已勾选项（跳过重复）
+        foreach (var tile in Tiles)
+        {
+            if (!tile.IsSelected) continue;
+            var rec = ToRecord(tile.Item);
+            var key = rec.Kind == "fs" ? rec.FsPath : rec.MtpPath;
+            if (key != null && !seen.Add(key)) continue;
+            result.Add(rec);
+        }
+
+        return result;
+    }
+
 
     public IReadOnlyList<MediaDragRecord> BuildDragRecords(IEnumerable<MediaItem> items) =>
         items.Select(ToRecord).ToList();
