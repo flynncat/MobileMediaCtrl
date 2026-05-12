@@ -157,10 +157,17 @@ public static class MtpMediaCatalog
             foreach (var path in SafeEnumerate(device.EnumerateFiles(currentDir)))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // 跳过以 '.' 开头的隐藏文件（macOS 的 ._xxx、.DS_Store 等）
+                var fileNameRaw = Path.GetFileName(path.TrimEnd('\\'));
+                if (fileNameRaw.StartsWith('.'))
+                    continue;
+
                 if (!MediaExtensionLists.IsMediaFile(path))
                     continue;
 
-                var fileName = Path.GetFileName(path.TrimEnd('\\'));
+                var fileName = fileNameRaw;
+
                 var fileTime = FileNameDateParser.TryParse(fileName)
                                ?? TryGetFileTimeUtc(device, path)
                                ?? DateTime.UtcNow;

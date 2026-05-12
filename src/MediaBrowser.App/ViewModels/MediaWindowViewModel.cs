@@ -3,7 +3,6 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Windows;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -13,6 +12,7 @@ using MediaBrowser.Core.Catalog;
 using MediaBrowser.Core.Models;
 using MediaBrowser.Core.Services;
 using MediaDevices;
+
 
 
 namespace MediaBrowser.App.ViewModels;
@@ -48,21 +48,17 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         CopySelectedToTargetCommand = new RelayCommand(_ => _ = CopySelectedToTargetAsync(), _ => !IsBusy);
         ToggleSelectAllCommand = new RelayCommand(_ => ToggleSelectAll());
         OpenExportFolderCommand = new RelayCommand(_ => OpenExportFolder());
-
-
-        // 配置 CollectionViewSource 分组
-        var cvs = new CollectionViewSource { Source = Tiles };
-        cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MediaTileViewModel.GroupKey)));
-        GroupedView = cvs.View;
     }
+
 
     public string Title { get; }
 
-    /// <summary>扁平化的媒体 tile 集合。</summary>
+    /// <summary>扁平化的媒体 tile 集合（保留用于全选/拖拽等操作的快速访问）。</summary>
     public ObservableCollection<MediaTileViewModel> Tiles { get; } = new();
 
-    /// <summary>带分组的视图，供 XAML 绑定。</summary>
-    public System.ComponentModel.ICollectionView GroupedView { get; }
+    /// <summary>两级分组集合：年→月→媒体项，供 XAML 绑定。</summary>
+    public ObservableCollection<YearGroupViewModel> YearGroups { get; } = new();
+
 
     public string CurrentDropTargetPath
     {
@@ -100,6 +96,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         _totalItemCount = 0;
 
         Tiles.Clear();
+        YearGroups.Clear();
+
 
         try
         {
@@ -192,57 +190,98 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// 将一批 MediaItem 增量插入到扁平集合中，按月份分组、时间从新到旧排序。
+    /// 将一批 MediaItem 增量插入到两级分组集合中，按年月分组、时间从新到旧排序。
     /// </summary>
     private void AddItemsToFlatList(IEnumerable<MediaItem> items)
     {
         if (items is null)
             return;
 
-        Func<int, int, string> labelFormatter = (y, m) =>
-            LanguageManager.GetString("Group_MonthFormat", y, m);
-
-
         foreach (var item in items)
         {
             var (year, month) = TimelineGrouper.GetMonthKey(item);
-            var groupKey = labelFormatter(year, month);
+            var groupKey = LanguageManager.GetString("Group_MonthFormat", year, month);
             var tile = new MediaTileViewModel(item, groupKey);
 
-            // 找到正确的插入位置（按时间从新到旧）
-            var insertIdx = FindInsertIndex(tile);
-            Tiles.Insert(insertIdx, tile);
+            // 同时维护扁平集合（用于全选/拖拽等操作）
+            Tiles.Add(tile);
+
+            // 插入到两级分组结构中
+            var yearGroup = GetOrCreateYearGroup(year);
+            var monthGroup = GetOrCreateMonthGroup(yearGroup, year, month);
+            InsertTileIntoMonthGroup(monthGroup, tile);
+
+            // 刷新年份显示标签（总数变化）
+            yearGroup.RefreshDisplayLabel();
         }
     }
 
-    /// <summary>
-    /// 在扁平集合中找到正确的插入位置，保持按月份分组、组内按时间从新到旧排序。
-    /// </summary>
-    private int FindInsertIndex(MediaTileViewModel newTile)
+    /// <summary>获取或创建年份分组（按年份从新到旧排序）。</summary>
+    private YearGroupViewModel GetOrCreateYearGroup(int year)
     {
-        var newTime = newTile.Item.SortTimeUtc;
-        var newKey = newTile.GroupKey;
-
-        for (int i = 0; i < Tiles.Count; i++)
+        foreach (var yg in YearGroups)
         {
-            var existing = Tiles[i];
-            // 先按分组键排序（月份从新到旧），再按时间从新到旧
-            if (existing.GroupKey == newKey)
-            {
-                // 同组内，找到第一个比新项更旧的位置
-                if (existing.Item.SortTimeUtc < newTime)
-                    return i;
-            }
-            else
-            {
-                // 不同组：如果当前组的时间比新项旧，说明新项应该在这之前
-                if (existing.Item.SortTimeUtc < newTime)
-                    return i;
-            }
+            if (yg.Year == year)
+                return yg;
         }
 
-        return Tiles.Count;
+        var newYearGroup = new YearGroupViewModel(year);
+        // 按年份从新到旧插入
+        var insertIdx = 0;
+        for (int i = 0; i < YearGroups.Count; i++)
+        {
+            if (YearGroups[i].Year < year)
+            {
+                insertIdx = i;
+                break;
+            }
+            insertIdx = i + 1;
+        }
+        YearGroups.Insert(insertIdx, newYearGroup);
+        return newYearGroup;
     }
+
+    /// <summary>获取或创建月份分组（按月份从新到旧排序）。</summary>
+    private static MonthGroupViewModel GetOrCreateMonthGroup(YearGroupViewModel yearGroup, int year, int month)
+    {
+        foreach (var mg in yearGroup.MonthGroups)
+        {
+            if (mg.Month == month)
+                return mg;
+        }
+
+        var newMonthGroup = new MonthGroupViewModel(year, month);
+        // 按月份从新到旧插入
+        var insertIdx = 0;
+        for (int i = 0; i < yearGroup.MonthGroups.Count; i++)
+        {
+            if (yearGroup.MonthGroups[i].Month < month)
+            {
+                insertIdx = i;
+                break;
+            }
+            insertIdx = i + 1;
+        }
+        yearGroup.MonthGroups.Insert(insertIdx, newMonthGroup);
+        return newMonthGroup;
+    }
+
+    /// <summary>将 tile 插入到月份分组中，保持按时间从新到旧排序。</summary>
+    private static void InsertTileIntoMonthGroup(MonthGroupViewModel monthGroup, MediaTileViewModel tile)
+    {
+        var newTime = tile.Item.SortTimeUtc;
+        for (int i = 0; i < monthGroup.Items.Count; i++)
+        {
+            if (monthGroup.Items[i].Item.SortTimeUtc < newTime)
+            {
+                monthGroup.Items.Insert(i, tile);
+                return;
+            }
+        }
+        monthGroup.Items.Add(tile);
+    }
+
+
 
     private void BrowseTargetFolder()
     {

@@ -151,22 +151,67 @@ public sealed class ThumbnailLoader
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.DrawImage(img, new Rectangle(0, 0, tw, th));
             }
-            bmp.Save(destPath, ImageFormat.Jpeg);
+
+            // 确保目标目录存在
+            var destDir = Path.GetDirectoryName(destPath);
+            if (!string.IsNullOrEmpty(destDir))
+                Directory.CreateDirectory(destDir);
+
+            try
+            {
+                bmp.Save(destPath, ImageFormat.Jpeg);
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                // GDI+ 通用错误（目标路径不可写、磁盘空间不足等）
+                // 重试一次：使用 MemoryStream 中转保存
+                try
+                {
+                    using var ms = new MemoryStream();
+                    bmp.Save(ms, ImageFormat.Jpeg);
+                    ms.Position = 0;
+                    using var fs = File.Create(destPath);
+                    ms.CopyTo(fs);
+                }
+                catch
+                {
+                    // 重试仍失败，回退到 Shell API
+                    FallbackToShellApi(sourcePath, destPath, maxEdge);
+                }
+            }
         }
         catch (OutOfMemoryException)
         {
             // GDI+ 对不支持的文件格式（如 .heic、.webp）或损坏文件会抛出 OutOfMemoryException
-            // 回退使用 Shell API 提取缩略图
-            try
-            {
-                BuildVideoThumbnailViaShell(sourcePath, destPath, maxEdge);
-            }
-            catch
-            {
-                // Shell API 也失败则放弃
-            }
+            FallbackToShellApi(sourcePath, destPath, maxEdge);
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            // Image.FromFile 也可能抛出 ExternalException（图像数据损坏）
+            FallbackToShellApi(sourcePath, destPath, maxEdge);
+        }
+        catch (Exception ex)
+        {
+            // 捕获所有其他异常，记录调试信息，不影响其他文件的缩略图加载
+            System.Diagnostics.Debug.WriteLine($"[ThumbnailLoader] BuildImageThumbnail failed for '{sourcePath}': {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// 回退使用 Shell API 提取缩略图，若 Shell API 也失败则静默放弃。
+    /// </summary>
+    private static void FallbackToShellApi(string sourcePath, string destPath, int maxEdge)
+    {
+        try
+        {
+            BuildVideoThumbnailViaShell(sourcePath, destPath, maxEdge);
+        }
+        catch
+        {
+            // Shell API 也失败则静默放弃，让调用方显示默认占位图标
+        }
+    }
+
 
 
     /// <summary>

@@ -33,17 +33,20 @@ public partial class MediaWindow : Window
                 ApplicationSession.Coordinator.NotifyMtpSessionClosed(descriptor.MtpDeviceId);
             _vm.Dispose();
         };
-
-        // 监听滚动事件，实现缩略图懒加载
-        MediaListBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(OnScrollChanged));
     }
+
 
     // ── 缩略图懒加载 ──
 
     private bool _lazyLoadScheduled;
 
-    private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    /// <summary>
+    /// ScrollViewer 滚动事件处理：触发缩略图懒加载和 Sticky Header 更新。
+    /// </summary>
+    private void MainScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        UpdateStickyHeader();
+
         if (!_lazyLoadScheduled)
         {
             _lazyLoadScheduled = true;
@@ -55,43 +58,211 @@ public partial class MediaWindow : Window
         }
     }
 
+    // ── Sticky Header ──
+
+    /// <summary>
+    /// 更新 Sticky Header 覆盖层，显示当前滚动位置对应的年份和月份。
+    /// </summary>
+    private void UpdateStickyHeader()
+    {
+        if (MainScrollViewer.VerticalOffset <= 0)
+        {
+            StickyHeaderBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        // 遍历年份分组，找到当前滚动位置对应的年份和月份
+        string? currentYear = null;
+        string? currentMonth = null;
+
+        foreach (var yearGroup in _vm.YearGroups)
+        {
+            // 找到年份对应的容器
+            var yearContainer = YearItemsControl.ItemContainerGenerator.ContainerFromItem(yearGroup) as FrameworkElement;
+            if (yearContainer == null) continue;
+
+            try
+            {
+                var transform = yearContainer.TransformToAncestor(MainScrollViewer);
+                var pos = transform.Transform(new System.Windows.Point(0, 0));
+
+                // 如果年份容器的底部还在视口上方，跳过
+                if (pos.Y + yearContainer.ActualHeight < 0)
+                    continue;
+
+                // 如果年份容器的顶部在视口下方，停止
+                if (pos.Y > MainScrollViewer.ViewportHeight)
+                    break;
+
+                // 当前年份标题已滚出顶部或正好在顶部
+                if (pos.Y <= 0)
+                {
+                    currentYear = yearGroup.DisplayLabel;
+
+                    // 查找当前月份
+                    if (yearGroup.IsExpanded)
+                    {
+                        foreach (var monthGroup in yearGroup.MonthGroups)
+                        {
+                            // 通过 VisualTree 查找月份容器
+                            var monthLabel = FindMonthHeaderInVisualTree(yearContainer, monthGroup);
+                            if (monthLabel != null)
+                            {
+                                try
+                                {
+                                    var monthTransform = monthLabel.TransformToAncestor(MainScrollViewer);
+                                    var monthPos = monthTransform.Transform(new System.Windows.Point(0, 0));
+                                    if (monthPos.Y <= 0)
+                                    {
+                                        currentMonth = monthGroup.DisplayLabel;
+                                    }
+                                }
+                                catch { /* TransformToAncestor 可能失败 */ }
+                            }
+                        }
+                    }
+                }
+                else if (currentYear == null)
+                {
+                    // 第一个可见的年份还没滚出顶部，不需要 Sticky Header
+                    break;
+                }
+            }
+            catch { /* TransformToAncestor 可能失败 */ }
+        }
+
+        if (currentYear != null)
+        {
+            StickyYearText.Text = currentYear;
+            StickyMonthText.Text = currentMonth ?? "";
+            StickyHeaderBorder.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            StickyHeaderBorder.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// 在 VisualTree 中查找月份标题对应的 Border 元素。
+    /// </summary>
+    private static FrameworkElement? FindMonthHeaderInVisualTree(DependencyObject parent, MonthGroupViewModel monthGroup)
+    {
+        // 遍历 VisualTree 查找 Tag="MonthHeader" 且 DataContext 匹配的 Border
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(parent);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current is FrameworkElement fe && fe.Tag as string == "MonthHeader" && fe.DataContext == monthGroup)
+                return fe;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(current); i++)
+                queue.Enqueue(VisualTreeHelper.GetChild(current, i));
+        }
+
+        return null;
+    }
+
+    // ── 年份/月份标题点击事件 ──
+
+    private void YearHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is YearGroupViewModel yearGroup)
+        {
+            yearGroup.IsExpanded = !yearGroup.IsExpanded;
+            e.Handled = true;
+        }
+    }
+
+    private void MonthHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is MonthGroupViewModel monthGroup)
+        {
+            monthGroup.IsExpanded = !monthGroup.IsExpanded;
+            e.Handled = true;
+        }
+    }
+
+    // ── 缩略图懒加载 ──
+
     /// <summary>
     /// 扫描当前可视区域内的 tile，为尚未加载缩略图的 tile 启动异步加载。
     /// </summary>
     private void LoadVisibleThumbnails()
     {
-        var scrollViewer = FindVisualChild<ScrollViewer>(MediaListBox);
-        if (scrollViewer == null) return;
+        var viewportHeight = MainScrollViewer.ViewportHeight;
 
-        var viewportTop = scrollViewer.VerticalOffset;
-        var viewportBottom = viewportTop + scrollViewer.ViewportHeight;
-
-        // 遍历所有可见的 ListBoxItem
-        for (int i = 0; i < MediaListBox.Items.Count; i++)
+        // 遍历所有年份分组
+        foreach (var yearGroup in _vm.YearGroups)
         {
-            if (MediaListBox.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem container)
-                continue;
+            if (!yearGroup.IsExpanded) continue;
 
-            // 检查容器是否在可视区域内
-            var transform = container.TransformToAncestor(scrollViewer);
-            var topLeft = transform.Transform(new System.Windows.Point(0, 0));
-            var bottomRight = transform.Transform(new System.Windows.Point(container.ActualWidth, container.ActualHeight));
-
-            if (bottomRight.Y < 0 || topLeft.Y > scrollViewer.ViewportHeight)
+            foreach (var monthGroup in yearGroup.MonthGroups)
             {
-                // 不在可视区域，取消加载
-                if (container.DataContext is MediaTileViewModel offTile)
-                    offTile.CancelThumbnailLoading();
-                continue;
-            }
+                if (!monthGroup.IsExpanded) continue;
 
-            // 在可视区域内，启动缩略图加载
-            if (container.DataContext is MediaTileViewModel tile && tile.Thumbnail == null)
-            {
-                _ = LoadThumbnailForTileAsync(tile);
+                foreach (var tile in monthGroup.Items)
+                {
+                    // 查找 tile 对应的可视元素
+                    var tileElement = FindTileElement(tile);
+                    if (tileElement == null) continue;
+
+                    try
+                    {
+                        var transform = tileElement.TransformToAncestor(MainScrollViewer);
+                        var pos = transform.Transform(new System.Windows.Point(0, 0));
+
+                        if (pos.Y + tileElement.ActualHeight < -200 || pos.Y > viewportHeight + 200)
+                        {
+                            // 不在可视区域（含缓冲区），取消加载
+                            tile.CancelThumbnailLoading();
+                            continue;
+                        }
+
+                        // 在可视区域内，启动缩略图加载
+                        if (tile.Thumbnail == null)
+                        {
+                            _ = LoadThumbnailForTileAsync(tile);
+                        }
+                    }
+                    catch
+                    {
+                        // TransformToAncestor 可能失败（元素未在可视树中）
+                    }
+                }
             }
         }
     }
+
+    /// <summary>
+    /// 在 VisualTree 中查找 tile 对应的 UI 元素。
+    /// </summary>
+    private FrameworkElement? FindTileElement(MediaTileViewModel tile)
+    {
+        // 使用广度优先搜索在 YearItemsControl 中查找 DataContext 匹配的 Border
+        return FindElementByDataContext(YearItemsControl, tile);
+    }
+
+    private static FrameworkElement? FindElementByDataContext(DependencyObject parent, object dataContext)
+    {
+        // 优化：只搜索到 Border 层级（媒体卡片的根元素）
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is FrameworkElement fe)
+            {
+                if (fe.DataContext == dataContext && fe is System.Windows.Controls.Border)
+                    return fe;
+            }
+            var result = FindElementByDataContext(child, dataContext);
+            if (result != null)
+                return result;
+        }
+        return null;
+    }
+
 
     private async Task LoadThumbnailForTileAsync(MediaTileViewModel tile)
     {
@@ -117,21 +288,8 @@ public partial class MediaWindow : Window
         }
     }
 
-    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
-    {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T found)
-                return found;
-            var result = FindVisualChild<T>(child);
-            if (result != null)
-                return result;
-        }
-        return null;
-    }
-
     // ── 拖放处理 ──
+
 
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {

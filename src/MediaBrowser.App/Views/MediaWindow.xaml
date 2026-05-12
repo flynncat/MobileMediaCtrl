@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
         mc:Ignorable="d"
+
         Title="{Binding Title}"
         Width="1100"
         Height="780"
@@ -50,138 +50,196 @@
       </StackPanel>
     </Border>
 
-    <!-- 使用 ListBox + VirtualizingWrapPanel 实现虚拟化 -->
-    <ListBox x:Name="MediaListBox"
-             ItemsSource="{Binding GroupedView}"
-             VirtualizingPanel.IsVirtualizing="True"
-             VirtualizingPanel.IsVirtualizingWhenGrouping="True"
-             VirtualizingPanel.VirtualizationMode="Recycling"
-             VirtualizingPanel.ScrollUnit="Pixel"
-             ScrollViewer.CanContentScroll="True"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-             ScrollViewer.VerticalScrollBarVisibility="Auto"
-
-             SelectionMode="Extended"
-             BorderThickness="0"
-             Background="Transparent"
-             HorizontalContentAlignment="Stretch">
-
-      <ListBox.ItemsPanel>
-        <ItemsPanelTemplate>
-          <vwp:VirtualizingWrapPanel Orientation="Horizontal"
-                                      SpacingMode="Uniform"
-                                      StretchItems="False"/>
-        </ItemsPanelTemplate>
-      </ListBox.ItemsPanel>
-
-      <!-- 分组头模板 -->
-      <ListBox.GroupStyle>
-        <GroupStyle>
-          <GroupStyle.HeaderTemplate>
+    <!-- 使用 Grid 叠加 Sticky Header 覆盖层 -->
+    <Grid>
+      <!-- 主列表：嵌套 ItemsControl（年→月→媒体项） -->
+      <ScrollViewer x:Name="MainScrollViewer"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    CanContentScroll="False"
+                    ScrollChanged="MainScrollViewer_ScrollChanged">
+        <ItemsControl x:Name="YearItemsControl"
+                      ItemsSource="{Binding YearGroups}">
+          <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <TextBlock Text="{Binding Name}"
-                         FontSize="18" FontWeight="Bold"
-                         Margin="4,12,4,4"
-                         Foreground="#333"/>
-            </DataTemplate>
-          </GroupStyle.HeaderTemplate>
-        </GroupStyle>
-      </ListBox.GroupStyle>
-
-
-      <!-- 隐藏 ListBox 默认选中样式，使用自定义 CheckBox -->
-      <ListBox.ItemContainerStyle>
-        <Style TargetType="ListBoxItem">
-          <Setter Property="Padding" Value="0"/>
-          <Setter Property="Margin" Value="0"/>
-          <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-          <Setter Property="Template">
-            <Setter.Value>
-              <ControlTemplate TargetType="ListBoxItem">
-                <ContentPresenter/>
-              </ControlTemplate>
-            </Setter.Value>
-          </Setter>
-        </Style>
-      </ListBox.ItemContainerStyle>
-
-      <ListBox.ItemTemplate>
-        <DataTemplate>
-          <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
-                  CornerRadius="4"
-                  PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
-                  PreviewMouseMove="Tile_PreviewMouseMove"
-                  PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
-                  MouseLeftButtonDown="Tile_MouseDoubleClick"
-                  AutomationProperties.Name="媒体缩略图卡片">
-            <DockPanel>
-              <CheckBox DockPanel.Dock="Top"
-                        IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        Content="{DynamicResource Media_Select}"
-                        Margin="4"
-                        AutomationProperties.Name="选择此文件"/>
-              <!-- 缩略图 + 视频播放图标叠加 -->
-              <Grid Height="120" Margin="4">
-                <!-- 缩略图 -->
-                <Image Stretch="UniformToFill"
-                       Source="{Binding Thumbnail}"
-                       AutomationProperties.Name="{Binding Item.DisplayName}"/>
-                <!-- 视频默认占位图标（当缩略图为空且是视频时显示） -->
-                <Border Background="#88000000" CornerRadius="4"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Padding="12">
-                  <Border.Style>
-                    <Style TargetType="Border">
-                      <Setter Property="Visibility" Value="Collapsed"/>
-                      <Style.Triggers>
-                        <MultiDataTrigger>
-                          <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding IsVideo}" Value="True"/>
-                            <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
-                          </MultiDataTrigger.Conditions>
-                          <Setter Property="Visibility" Value="Visible"/>
-                        </MultiDataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Border.Style>
-                  <TextBlock Text="🎬" FontSize="28" Foreground="White"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <StackPanel>
+                <!-- 年份标题行 -->
+                <Border Background="#E8E8E8" Padding="8,6" Margin="0,8,0,0" CornerRadius="4"
+                        Cursor="Hand" MouseLeftButtonDown="YearHeader_MouseLeftButtonDown"
+                        Tag="YearHeader">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding DisplayLabel}"
+                               FontSize="20" FontWeight="Bold" Foreground="#222"/>
+                    <TextBlock Text="▼" FontSize="14" Margin="8,0,0,0" VerticalAlignment="Center"
+                               Foreground="#666">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsExpanded}" Value="False">
+                              <Setter Property="Text" Value="▶"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                  </StackPanel>
                 </Border>
-                <!-- 视频播放图标叠加（当是视频且有缩略图时显示） -->
-                <Border Background="#66000000" CornerRadius="20"
-                        Width="40" Height="40"
-                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <Border.Style>
-                    <Style TargetType="Border">
-                      <Setter Property="Visibility" Value="Collapsed"/>
+
+                <!-- 月份列表（年份展开时可见） -->
+                <ItemsControl ItemsSource="{Binding MonthGroups}">
+                  <ItemsControl.Style>
+                    <Style TargetType="ItemsControl">
+                      <Setter Property="Visibility" Value="Visible"/>
                       <Style.Triggers>
-                        <MultiDataTrigger>
-                          <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding IsVideo}" Value="True"/>
-                          </MultiDataTrigger.Conditions>
-                          <Setter Property="Visibility" Value="Visible"/>
-                        </MultiDataTrigger>
-                        <MultiDataTrigger>
-                          <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding IsVideo}" Value="True"/>
-                            <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
-                          </MultiDataTrigger.Conditions>
+                        <DataTrigger Binding="{Binding IsExpanded}" Value="False">
                           <Setter Property="Visibility" Value="Collapsed"/>
-                        </MultiDataTrigger>
+                        </DataTrigger>
                       </Style.Triggers>
                     </Style>
-                  </Border.Style>
-                  <Path Data="M8,0 L20,10 L8,20 Z" Fill="White"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Margin="3,0,0,0"/>
-                </Border>
-              </Grid>
-              <TextBlock Text="{Binding Item.DisplayName}" TextTrimming="CharacterEllipsis"
-                         Margin="4,0,4,4" FontSize="14" MaxHeight="44"/>
-            </DockPanel>
-          </Border>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+                  </ItemsControl.Style>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel>
+                        <!-- 月份标题行 -->
+                        <Border Background="#F2F2F2" Padding="12,4" Margin="0,4,0,0" CornerRadius="3"
+                                Cursor="Hand" MouseLeftButtonDown="MonthHeader_MouseLeftButtonDown"
+                                Tag="MonthHeader">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayLabel}"
+                                       FontSize="16" FontWeight="SemiBold" Foreground="#444"/>
+                            <TextBlock Text="▼" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"
+                                       Foreground="#888">
+                              <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                  <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="False">
+                                      <Setter Property="Text" Value="▶"/>
+                                    </DataTrigger>
+                                  </Style.Triggers>
+                                </Style>
+                              </TextBlock.Style>
+                            </TextBlock>
+                          </StackPanel>
+                        </Border>
+
+                        <!-- 媒体项网格（月份展开时可见） -->
+                        <ItemsControl ItemsSource="{Binding Items}">
+                          <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                              <Setter Property="Visibility" Value="Visible"/>
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsExpanded}" Value="False">
+                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </ItemsControl.Style>
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
+                                      CornerRadius="4"
+                                      PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
+                                      PreviewMouseMove="Tile_PreviewMouseMove"
+                                      PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
+                                      MouseLeftButtonDown="Tile_MouseDoubleClick"
+                                      AutomationProperties.Name="媒体缩略图卡片">
+                                <DockPanel>
+                                  <CheckBox DockPanel.Dock="Top"
+                                            IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Content="{DynamicResource Media_Select}"
+                                            Margin="4"
+                                            AutomationProperties.Name="选择此文件"/>
+                                  <!-- 缩略图 + 视频播放图标叠加 -->
+                                  <Grid Height="120" Margin="4">
+                                    <!-- 缩略图 -->
+                                    <Image Stretch="UniformToFill"
+                                           Source="{Binding Thumbnail}"
+                                           AutomationProperties.Name="{Binding Item.DisplayName}"/>
+                                    <!-- 视频默认占位图标（当缩略图为空且是视频时显示） -->
+                                    <Border Background="#88000000" CornerRadius="4"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Padding="12">
+                                      <Border.Style>
+                                        <Style TargetType="Border">
+                                          <Setter Property="Visibility" Value="Collapsed"/>
+                                          <Style.Triggers>
+                                            <MultiDataTrigger>
+                                              <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsVideo}" Value="True"/>
+                                                <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
+                                              </MultiDataTrigger.Conditions>
+                                              <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                          </Style.Triggers>
+                                        </Style>
+                                      </Border.Style>
+                                      <TextBlock Text="🎬" FontSize="28" Foreground="White"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- 视频播放图标叠加（当是视频且有缩略图时显示） -->
+                                    <Border Background="#66000000" CornerRadius="20"
+                                            Width="40" Height="40"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                      <Border.Style>
+                                        <Style TargetType="Border">
+                                          <Setter Property="Visibility" Value="Collapsed"/>
+                                          <Style.Triggers>
+                                            <MultiDataTrigger>
+                                              <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsVideo}" Value="True"/>
+                                              </MultiDataTrigger.Conditions>
+                                              <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                            <MultiDataTrigger>
+                                              <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsVideo}" Value="True"/>
+                                                <Condition Binding="{Binding Thumbnail}" Value="{x:Null}"/>
+                                              </MultiDataTrigger.Conditions>
+                                              <Setter Property="Visibility" Value="Collapsed"/>
+                                            </MultiDataTrigger>
+                                          </Style.Triggers>
+                                        </Style>
+                                      </Border.Style>
+                                      <Path Data="M8,0 L20,10 L8,20 Z" Fill="White"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Margin="3,0,0,0"/>
+                                    </Border>
+                                  </Grid>
+                                  <TextBlock Text="{Binding Item.DisplayName}" TextTrimming="CharacterEllipsis"
+                                             Margin="4,0,4,4" FontSize="14" MaxHeight="44"/>
+                                </DockPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- Sticky Header 覆盖层 -->
+      <Border x:Name="StickyHeaderBorder"
+              VerticalAlignment="Top" HorizontalAlignment="Stretch"
+              Background="#F0F0F0" Padding="8,4" CornerRadius="0,0,4,4"
+              Visibility="Collapsed"
+              IsHitTestVisible="False">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock x:Name="StickyYearText" FontSize="18" FontWeight="Bold" Foreground="#222"/>
+          <TextBlock Text=" · " FontSize="16" Foreground="#666" Margin="4,0"/>
+          <TextBlock x:Name="StickyMonthText" FontSize="16" FontWeight="SemiBold" Foreground="#444"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
   </DockPanel>
 </Window>

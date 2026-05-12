@@ -41,8 +41,15 @@ public sealed class FileSystemMediaCatalog
             foreach (var file in files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // 跳过以 '.' 开头的隐藏文件（macOS 的 ._xxx、.DS_Store 等）
+                var fileName = Path.GetFileName(file);
+                if (fileName.StartsWith('.'))
+                    continue;
+
                 if (!MediaExtensionLists.IsMediaFile(file))
                     continue;
+
 
                 DateTime sortUtc;
                 try

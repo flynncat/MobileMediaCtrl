@@ -59,6 +59,9 @@
 
   <!-- 月分组 -->
   <sys:String x:Key="Group_MonthFormat">{0}年{1}月</sys:String>
+  <sys:String x:Key="Group_YearFormat">{0}年</sys:String>
+  <sys:String x:Key="Group_ItemCount">{0} 项</sys:String>
+
 
   <!-- 增量扫描 -->
   <sys:String x:Key="VM_Scanning">正在扫描…已找到 {0} 个文件</sys:String>

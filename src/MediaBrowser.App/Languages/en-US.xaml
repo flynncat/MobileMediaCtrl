@@ -59,6 +59,9 @@
 
   <!-- Month Group -->
   <sys:String x:Key="Group_MonthFormat">{1}/{0}</sys:String>
+  <sys:String x:Key="Group_YearFormat">{0}</sys:String>
+  <sys:String x:Key="Group_ItemCount">{0} items</sys:String>
+
 
   <!-- Incremental Scan -->
   <sys:String x:Key="VM_Scanning">Scanning... {0} files found</sys:String>
