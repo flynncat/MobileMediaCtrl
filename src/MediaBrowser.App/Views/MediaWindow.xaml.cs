@@ -290,11 +290,17 @@ public partial class MediaWindow : Window
 
     // ── 拖放处理 ──
 
-
     private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
-        // 检测是否从本窗口发起的拖拽（通过进程内静态变量判断，不污染 DataObject）
-        if (InternalDragFormats.ActiveDragSourceWindowId == InstanceId)
+
+        // 检测是否从本窗口发起的拖拽
+        bool isFromSelf = InternalDragFormats.ActiveDragSourceWindowId == InstanceId;
+        if (!isFromSelf && e.Data.GetDataPresent(InternalDragFormats.SourceWindowId))
+        {
+            isFromSelf = e.Data.GetData(InternalDragFormats.SourceWindowId) as string == InstanceId;
+        }
+
+        if (isFromSelf)
         {
             // 拖回自身窗口时显示禁止符号
             e.Effects = System.Windows.DragDropEffects.None;
@@ -311,8 +317,8 @@ public partial class MediaWindow : Window
         }
     }
 
-
     private async void Window_PreviewDrop(object sender, System.Windows.DragEventArgs e)
+
     {
         // 拖拽到自身窗口时忽略（误操作）
         if (InternalDragFormats.ActiveDragSourceWindowId == InstanceId)
@@ -369,6 +375,7 @@ public partial class MediaWindow : Window
     }
 
     private void Tile_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+
         _dragPrepared = false;
 
     private void Tile_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -394,46 +401,56 @@ public partial class MediaWindow : Window
             records = _vm.BuildDragRecords(new[] { tile.Item });
         }
 
-        var data = new System.Windows.DataObject();
-
-        // 通过进程内静态变量传递内部拖放信息（不放入 DataObject，避免跨进程 OLE 序列化问题）
+        // 通过进程内静态变量传递内部拖放信息
         InternalDragFormats.ActiveDragSourceWindowId = InstanceId;
         InternalDragFormats.ActiveDragMediaItemsJson = JsonSerializer.Serialize(records, MediaDragJson.Options);
 
-
-        // 同步准备 Shell 拖拽路径（必须同步，否则 DoDragDrop 无法在鼠标按下状态启动）
+        // 同步准备 Shell 拖拽路径
         IReadOnlyList<string> shellPaths;
-        if (_vm.IsFileSystemDevice)
+        try
         {
-            // 文件系统设备：直接使用文件路径，零延迟
-            shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
+            if (_vm.IsFileSystemDevice)
+            {
+                shellPaths = _vm.BuildShellDragPathsForFileSystem(records);
+            }
+            else
+            {
+                var prevCursor = Mouse.OverrideCursor;
+                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+                try
+                {
+                    shellPaths = _vm.StageFilesForShellDragSync(records);
+                }
+                finally
+                {
+                    Mouse.OverrideCursor = prevCursor;
+                }
+            }
         }
-        else
+        catch
         {
-            // MTP设备：同步下载到临时目录（显示等待光标）
-            var prevCursor = Mouse.OverrideCursor;
-            Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+            shellPaths = Array.Empty<string>();
+        }
 
+        if (shellPaths.Count == 0)
+        {
+            // 即使没有有效路径，也启动拖放（窗口内显示禁止符号，提示用户操作无效）
+            var emptyData = new System.Windows.DataObject();
+            emptyData.SetData(InternalDragFormats.SourceWindowId, InstanceId);
             try
             {
-                shellPaths = _vm.StageFilesForShellDragSync(records);
+                DragDrop.DoDragDrop(fe, emptyData, System.Windows.DragDropEffects.Copy);
             }
+            catch { }
             finally
             {
-                Mouse.OverrideCursor = prevCursor;
+                InternalDragFormats.ClearDragState();
             }
-        }
-
-        if (shellPaths.Count > 0)
-        {
-            data.SetData(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
-        }
-        else
-        {
-            // shellPaths 为空时不启动拖放
-            InternalDragFormats.ClearDragState();
             return;
         }
+
+        // 创建仅包含标准 FileDrop 格式的 DataObject
+        var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, shellPaths.ToArray());
 
         try
         {
@@ -447,10 +464,9 @@ public partial class MediaWindow : Window
         {
             InternalDragFormats.ClearDragState();
         }
-
-
-
     }
+
+
 
 
 

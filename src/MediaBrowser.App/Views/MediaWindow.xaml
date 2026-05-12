@@ -12,6 +12,8 @@
         AllowDrop="True"
         PreviewDragOver="Window_PreviewDragOver"
         PreviewDrop="Window_PreviewDrop">
+
+
   <DockPanel Margin="12">
     <Border DockPanel.Dock="Top" Padding="0,0,0,12">
       <StackPanel>
