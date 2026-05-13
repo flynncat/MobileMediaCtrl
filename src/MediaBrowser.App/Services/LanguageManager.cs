@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text.Json;
 using System.Windows;
 
 namespace MediaBrowser.App.Services;
@@ -7,13 +5,10 @@ namespace MediaBrowser.App.Services;
 /// <summary>
 /// 管理应用程序的多语言切换。
 /// 通过加载不同的 ResourceDictionary 实现 UI 文本的动态切换。
+/// 持久化由 <see cref="SettingsStore"/> 统一负责。
 /// </summary>
 public static class LanguageManager
 {
-    private static readonly string SettingsPath =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MediaBrowser", "settings.json");
-
     private static ResourceDictionary? _currentLangDict;
 
     /// <summary>支持的语言列表（显示名 → 资源文件名）。</summary>
@@ -31,9 +26,9 @@ public static class LanguageManager
     /// </summary>
     public static void Initialize()
     {
-        var saved = LoadSavedLanguage();
-        if (!string.IsNullOrEmpty(saved))
-            CurrentLanguage = saved;
+        var settings = SettingsStore.Load();
+        if (!string.IsNullOrEmpty(settings.Language))
+            CurrentLanguage = settings.Language;
         ApplyLanguage(CurrentLanguage);
     }
 
@@ -44,7 +39,10 @@ public static class LanguageManager
     {
         CurrentLanguage = langCode;
         ApplyLanguage(langCode);
-        SaveLanguage(langCode);
+
+        var settings = SettingsStore.Load();
+        settings.Language = langCode;
+        SettingsStore.Save(settings);
     }
 
     /// <summary>
@@ -100,38 +98,5 @@ public static class LanguageManager
 
         app.Resources.MergedDictionaries.Add(newDict);
         _currentLangDict = newDict;
-    }
-
-    private static string? LoadSavedLanguage()
-    {
-        try
-        {
-            if (!File.Exists(SettingsPath))
-                return null;
-            var json = File.ReadAllText(SettingsPath);
-            var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("language", out var prop))
-                return prop.GetString();
-        }
-        catch
-        {
-            // 忽略读取失败
-        }
-        return null;
-    }
-
-    private static void SaveLanguage(string langCode)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(SettingsPath)!;
-            Directory.CreateDirectory(dir);
-            var json = JsonSerializer.Serialize(new { language = langCode });
-            File.WriteAllText(SettingsPath, json);
-        }
-        catch
-        {
-            // 忽略保存失败
-        }
     }
 }

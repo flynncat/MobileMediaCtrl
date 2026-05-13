@@ -32,6 +32,15 @@
   <sys:String x:Key="Settings_Language">Language:</sys:String>
   <sys:String x:Key="Settings_Save">Save</sys:String>
   <sys:String x:Key="Settings_RestartHint">Language changes will take full effect after restart.</sys:String>
+  <sys:String x:Key="Settings_AutoStart">Launch at Windows startup</sys:String>
+  <sys:String x:Key="Settings_AutoStartFailed">Failed to set auto-start. Please check permissions.</sys:String>
+
+  <!-- FirstRun Dialog -->
+  <sys:String x:Key="FirstRun_Title">Welcome</sys:String>
+  <sys:String x:Key="FirstRun_Message">Do you want MediaBrowser to launch automatically when Windows starts?&#x0a;&#x0a;You can change this option later in Settings.</sys:String>
+  <sys:String x:Key="FirstRun_Yes">Yes</sys:String>
+  <sys:String x:Key="FirstRun_No">No</sys:String>
+
 
   <!-- ViewModel / Code-behind strings -->
   <sys:String x:Key="VM_Loading">Loading...</sys:String>

@@ -54,5 +54,10 @@ Desktop.ini
 *.tmp
 *~
 
-# Build Output - General folder
-General/
+# Build Output - General folder（仅保留 README.txt 和占位文件，忽略所有打包产物）
+General/*
+!General/README.txt
+!General/.gitkeep
+
+# Publish 中间产物
+artifacts/
