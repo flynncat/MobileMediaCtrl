@@ -1,0 +1,503 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MobileMediaCtrl - Web UI Mockup</title>
+    <style>
+        :root {
+            --primary-color: #0078D7;
+            --primary-hover: #005A9E;
+            --bg-color: #F3F3F3;
+            --panel-bg: #FFFFFF;
+            --border-color: #CCCCCC;
+            --text-main: #222222;
+            --text-secondary: #666666;
+            --year-bg: #E8E8E8;
+            --month-bg: #F2F2F2;
+            --item-bg: #FFFFFF;
+            --item-border: #DDDDDD;
+            --item-hover-border: #0078D7;
+            --item-selected-bg: #E5F3FF;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Top Control Panel */
+        .top-panel {
+            background-color: var(--panel-bg);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .status-text {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        .path-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+
+        .path-label {
+            font-size: 15px;
+            white-space: nowrap;
+        }
+
+        .path-input {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: #FAFAFA;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            font-size: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: #F9F9F9;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background-color: #EAEAEA;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .action-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .hint-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 24px;
+            position: relative;
+        }
+
+        /* Sticky Header */
+        .sticky-header {
+            position: sticky;
+            top: -16px;
+            background-color: rgba(240, 240, 240, 0.95);
+            padding: 8px 16px;
+            margin: -16px -24px 16px -24px;
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(4px);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .sticky-header.visible {
+            opacity: 1;
+        }
+
+        /* Timeline Groups */
+        .year-group {
+            margin-bottom: 24px;
+        }
+
+        .year-header {
+            background-color: var(--year-bg);
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            user-select: none;
+        }
+
+        .month-group {
+            margin-left: 16px;
+            margin-bottom: 16px;
+        }
+
+        .month-header {
+            background-color: var(--month-bg);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            user-select: none;
+        }
+
+        .toggle-icon {
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: transform 0.2s;
+        }
+
+        .collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        .collapsed .group-content {
+            display: none;
+        }
+
+        /* Media Grid */
+        .media-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .media-item {
+            width: 160px;
+            height: 200px;
+            background-color: var(--item-bg);
+            border: 1px solid var(--item-border);
+            border-radius: 6px;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .media-item:hover {
+            border-color: var(--item-hover-border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .media-item.selected {
+            background-color: var(--item-selected-bg);
+            border-color: var(--primary-color);
+        }
+
+        .item-checkbox {
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .item-checkbox input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .item-thumb-container {
+            flex: 1;
+            position: relative;
+            border-radius: 4px;
+            overflow: hidden;
+            background-color: #EEE;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .item-thumb {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-icon {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            pointer-events: none;
+        }
+
+        .item-name {
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+        }
+
+        /* Icons (using simple text/emoji for mockup) */
+        .icon {
+            font-style: normal;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Control Panel -->
+    <div class="top-panel">
+        <div class="status-text">已连接: 我的手机 (共 128 个媒体文件)</div>
+        
+        <div class="path-row">
+            <div class="path-label">复制到文件夹:</div>
+            <input type="text" class="path-input" value="C:\Users\Admin\Desktop\照片备份" readonly>
+            <button class="btn"><i class="icon">📁</i> 浏览...</button>
+        </div>
+
+        <div class="action-row">
+            <button class="btn"><i class="icon">🔄</i> 刷新列表</button>
+            <button class="btn btn-primary" onclick="alert('开始复制选中的文件...')"><i class="icon">📋</i> 复制已选</button>
+            <button class="btn" onclick="toggleSelectAll()"><i class="icon">☑️</i> 全选 / 取消全选</button>
+            <button class="btn"><i class="icon">📂</i> 打开导出文件夹</button>
+        </div>
+
+        <div class="hint-text">提示：您可以直接勾选需要的照片，点击“复制已选”；或者直接将照片拖拽到桌面或其他文件夹中。</div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content" id="mainScroll" onscroll="handleScroll()">
+        
+        <div class="sticky-header" id="stickyHeader">
+            <span id="stickyYear">2023年</span>
+            <span style="color: var(--text-secondary)">·</span>
+            <span id="stickyMonth">10月</span>
+        </div>
+
+        <!-- 2023 Year Group -->
+        <div class="year-group" id="year-2023">
+            <div class="year-header" onclick="toggleGroup(this)">
+                <span>2023年</span>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="group-content">
+                
+                <!-- 10 Month Group -->
+                <div class="month-group" id="month-2023-10">
+                    <div class="month-header" onclick="toggleGroup(this)">
+                        <span>10月</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="group-content media-grid">
+                        <!-- Media Items -->
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/10/200/200" class="item-thumb" alt="IMG_20231001.jpg">
+                            </div>
+                            <div class="item-name" title="IMG_20231001.jpg">IMG_20231001.jpg</div>
+                        </div>
+
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/11/200/200" class="item-thumb" alt="VID_20231002.mp4">
+                                <div class="video-icon">▶</div>
+                            </div>
+                            <div class="item-name" title="VID_20231002.mp4">VID_20231002.mp4</div>
+                        </div>
+
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/12/200/200" class="item-thumb" alt="IMG_20231005.jpg">
+                            </div>
+                            <div class="item-name" title="IMG_20231005.jpg">IMG_20231005.jpg</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 9 Month Group -->
+                <div class="month-group" id="month-2023-09">
+                    <div class="month-header" onclick="toggleGroup(this)">
+                        <span>9月</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="group-content media-grid">
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/13/200/200" class="item-thumb" alt="IMG_20230915.jpg">
+                            </div>
+                            <div class="item-name" title="IMG_20230915.jpg">IMG_20230915.jpg</div>
+                        </div>
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/14/200/200" class="item-thumb" alt="IMG_20230920.jpg">
+                            </div>
+                            <div class="item-name" title="IMG_20230920.jpg">IMG_20230920.jpg</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 2022 Year Group -->
+        <div class="year-group" id="year-2022">
+            <div class="year-header" onclick="toggleGroup(this)">
+                <span>2022年</span>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="group-content">
+                <div class="month-group" id="month-2022-12">
+                    <div class="month-header" onclick="toggleGroup(this)">
+                        <span>12月</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="group-content media-grid">
+                        <div class="media-item" onclick="toggleItemSelection(this)">
+                            <label class="item-checkbox" onclick="event.stopPropagation()">
+                                <input type="checkbox" onchange="updateItemStyle(this)"> 选择
+                            </label>
+                            <div class="item-thumb-container">
+                                <img src="https://picsum.photos/id/15/200/200" class="item-thumb" alt="VID_20221225.mp4">
+                                <div class="video-icon">▶</div>
+                            </div>
+                            <div class="item-name" title="VID_20221225.mp4">VID_20221225.mp4</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Toggle group collapse/expand
+        function toggleGroup(headerElement) {
+            const group = headerElement.parentElement;
+            group.classList.toggle('collapsed');
+        }
+
+        // Toggle individual item selection
+        function toggleItemSelection(itemElement) {
+            const checkbox = itemElement.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            updateItemStyle(checkbox);
+        }
+
+        // Update item style based on checkbox state
+        function updateItemStyle(checkbox) {
+            const itemElement = checkbox.closest('.media-item');
+            if (checkbox.checked) {
+                itemElement.classList.add('selected');
+            } else {
+                itemElement.classList.remove('selected');
+            }
+        }
+
+        // Toggle select all
+        let isAllSelected = false;
+        function toggleSelectAll() {
+            isAllSelected = !isAllSelected;
+            const checkboxes = document.querySelectorAll('.media-item input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = isAllSelected;
+                updateItemStyle(cb);
+            });
+        }
+
+        // Simple sticky header logic
+        function handleScroll() {
+            const scrollArea = document.getElementById('mainScroll');
+            const stickyHeader = document.getElementById('stickyHeader');
+            const stickyYear = document.getElementById('stickyYear');
+            const stickyMonth = document.getElementById('stickyMonth');
+            
+            if (scrollArea.scrollTop > 50) {
+                stickyHeader.classList.add('visible');
+                
+                // Find the topmost visible month group
+                const monthGroups = document.querySelectorAll('.month-group');
+                let currentMonth = null;
+                let currentYear = null;
+
+                for (let group of monthGroups) {
+                    const rect = group.getBoundingClientRect();
+                    if (rect.top > 0 && rect.top < 300) {
+                        currentMonth = group.querySelector('.month-header span').innerText;
+                        currentYear = group.closest('.year-group').querySelector('.year-header span').innerText;
+                        break;
+                    }
+                }
+
+                if (currentMonth && currentYear) {
+                    stickyYear.innerText = currentYear;
+                    stickyMonth.innerText = currentMonth;
+                }
+            } else {
+                stickyHeader.classList.remove('visible');
+            }
+        }
+    </script>
+</body>
+</html>

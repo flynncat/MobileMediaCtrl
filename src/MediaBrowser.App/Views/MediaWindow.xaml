@@ -11,68 +11,161 @@
         WindowStartupLocation="CenterScreen"
         AllowDrop="True"
         PreviewDragOver="Window_PreviewDragOver"
-        PreviewDrop="Window_PreviewDrop">
+        PreviewDrop="Window_PreviewDrop"
+        Background="#F3F3F3">
 
+  <Window.Resources>
+    <!-- 按钮基础样式 -->
+    <Style x:Key="ActionButtonStyle" TargetType="Button">
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="Margin" Value="0,0,12,0"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Background" Value="#F9F9F9"/>
+      <Setter Property="BorderBrush" Value="#CCCCCC"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="#222222"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#EAEAEA"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="#DDDDDD"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
 
-  <DockPanel Margin="12">
-    <Border DockPanel.Dock="Top" Padding="0,0,0,12">
+    <!-- 主按钮样式 -->
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+      <Setter Property="Background" Value="#0078D7"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#0078D7"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#005A9E"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="#004A82"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 媒体项卡片样式 -->
+    <Style x:Key="MediaItemBorderStyle" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#DDDDDD"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Margin" Value="8"/>
+      <Setter Property="Width" Value="160"/>
+      <Setter Property="Height" Value="200"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="BorderBrush" Value="#0078D7"/>
+          <Setter Property="Effect">
+            <Setter.Value>
+              <DropShadowEffect Color="Black" Opacity="0.1" BlurRadius="8" ShadowDepth="2"/>
+            </Setter.Value>
+          </Setter>
+        </Trigger>
+        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+          <Setter Property="Background" Value="#E5F3FF"/>
+          <Setter Property="BorderBrush" Value="#0078D7"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+
+  <DockPanel>
+    <!-- 顶部控制面板 -->
+    <Border DockPanel.Dock="Top" Padding="24,16" Background="White" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Panel.ZIndex="10">
+      <Border.Effect>
+        <DropShadowEffect Color="Black" Opacity="0.05" BlurRadius="4" ShadowDepth="2"/>
+      </Border.Effect>
       <StackPanel>
-        <TextBlock Text="{Binding StatusText}" Margin="0,0,0,8"
+        <TextBlock Text="{Binding StatusText}" FontSize="16" FontWeight="Bold" Foreground="#222222" Margin="0,0,0,12"
                    AutomationProperties.Name="状态说明"/>
-        <Grid>
+        <Grid Margin="0,0,0,12">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <TextBlock Text="{DynamicResource Media_CopyToFolder}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <TextBlock Text="{DynamicResource Media_CopyToFolder}" FontSize="15" VerticalAlignment="Center" Margin="0,0,12,0"/>
 
           <TextBox Grid.Column="1"
                    Text="{Binding CurrentDropTargetPath, UpdateSourceTrigger=PropertyChanged}"
+                   FontSize="15" Padding="12,8" Background="#FAFAFA" BorderBrush="#CCCCCC"
+                   VerticalContentAlignment="Center"
                    AutomationProperties.Name="复制目标路径"/>
           <Button Grid.Column="2" Content="{DynamicResource Media_Browse}" Command="{Binding BrowseTargetFolderCommand}"
+                  Style="{StaticResource ActionButtonStyle}" Margin="12,0,0,0" Padding="16,8"
                   AutomationProperties.Name="浏览目标文件夹"/>
         </Grid>
-        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-          <Button Content="{DynamicResource Media_Refresh}" Command="{Binding RefreshCommand}" AutomationProperties.Name="刷新列表"/>
-          <Button Content="{DynamicResource Media_CopySelected}" Command="{Binding CopySelectedToTargetCommand}"
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+          <Button Content="{DynamicResource Media_Refresh}" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButtonStyle}" AutomationProperties.Name="刷新列表"/>
+          <Button Content="{DynamicResource Media_CopySelected}" Command="{Binding CopySelectedToTargetCommand}" Style="{StaticResource PrimaryButtonStyle}"
                   AutomationProperties.Name="复制已选到目标文件夹"/>
-          <Button Content="{DynamicResource Media_ToggleSelectAll}" Command="{Binding ToggleSelectAllCommand}"
+          <Button Content="{DynamicResource Media_ToggleSelectAll}" Command="{Binding ToggleSelectAllCommand}" Style="{StaticResource ActionButtonStyle}"
                   AutomationProperties.Name="全选或取消全选"/>
-          <Button Content="{DynamicResource Media_OpenExportFolder}" Command="{Binding OpenExportFolderCommand}"
+          <Button Content="{DynamicResource Media_OpenExportFolder}" Command="{Binding OpenExportFolderCommand}" Style="{StaticResource ActionButtonStyle}"
                   AutomationProperties.Name="打开导出文件夹"/>
-
         </StackPanel>
 
         <TextBlock Text="{DynamicResource Media_Hint}"
-                   FontSize="16"
-                   Opacity="0.65"
-                   Margin="0,8,0,0"/>
-
+                   FontSize="14"
+                   Foreground="#666666"
+                   Margin="0,0,0,0"/>
       </StackPanel>
     </Border>
 
-    <!-- 使用 Grid 叠加 Sticky Header 覆盖层 -->
-    <Grid>
+    <!-- 主内容区 -->
+    <Grid Margin="24,16,24,0">
       <!-- 主列表：嵌套 ItemsControl（年→月→媒体项） -->
       <ScrollViewer x:Name="MainScrollViewer"
                     VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
                     CanContentScroll="False"
-                    ScrollChanged="MainScrollViewer_ScrollChanged">
+                    ScrollChanged="MainScrollViewer_ScrollChanged"
+                    Padding="0,0,16,16">
         <ItemsControl x:Name="YearItemsControl"
                       ItemsSource="{Binding YearGroups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <StackPanel>
+              <StackPanel Margin="0,0,0,24">
                 <!-- 年份标题行 -->
-                <Border Background="#E8E8E8" Padding="8,6" Margin="0,8,0,0" CornerRadius="4"
+                <Border Background="#E8E8E8" Padding="16,10" Margin="0,0,0,12" CornerRadius="6"
                         Cursor="Hand" MouseLeftButtonDown="YearHeader_MouseLeftButtonDown"
                         Tag="YearHeader">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding DisplayLabel}"
                                FontSize="20" FontWeight="Bold" Foreground="#222"/>
-                    <TextBlock FontSize="14" Margin="8,0,0,0" VerticalAlignment="Center"
+                    <TextBlock FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"
                                Foreground="#666">
                       <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -85,12 +178,11 @@
                         </Style>
                       </TextBlock.Style>
                     </TextBlock>
-
                   </StackPanel>
                 </Border>
 
                 <!-- 月份列表（年份展开时可见） -->
-                <ItemsControl ItemsSource="{Binding MonthGroups}">
+                <ItemsControl ItemsSource="{Binding MonthGroups}" Margin="16,0,0,0">
                   <ItemsControl.Style>
                     <Style TargetType="ItemsControl">
                       <Setter Property="Visibility" Value="Visible"/>
@@ -103,15 +195,15 @@
                   </ItemsControl.Style>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <StackPanel>
+                      <StackPanel Margin="0,0,0,16">
                         <!-- 月份标题行 -->
-                        <Border Background="#F2F2F2" Padding="12,4" Margin="0,4,0,0" CornerRadius="3"
+                        <Border Background="#F2F2F2" Padding="16,8" Margin="0,0,0,12" CornerRadius="4"
                                 Cursor="Hand" MouseLeftButtonDown="MonthHeader_MouseLeftButtonDown"
                                 Tag="MonthHeader">
                           <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding DisplayLabel}"
                                        FontSize="16" FontWeight="SemiBold" Foreground="#444"/>
-                            <TextBlock FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"
+                            <TextBlock FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"
                                        Foreground="#888">
                               <TextBlock.Style>
                                 <Style TargetType="TextBlock">
@@ -124,7 +216,6 @@
                                 </Style>
                               </TextBlock.Style>
                             </TextBlock>
-
                           </StackPanel>
                         </Border>
 
@@ -147,30 +238,32 @@
                           </ItemsControl.ItemsPanel>
                           <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                              <Border Width="160" Height="200" Margin="6" BorderBrush="#CCC" BorderThickness="1"
-                                      CornerRadius="4" Background="White"
+                              <Border Style="{StaticResource MediaItemBorderStyle}"
                                       PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
                                       PreviewMouseMove="Tile_PreviewMouseMove"
                                       PreviewMouseLeftButtonUp="Tile_PreviewMouseLeftButtonUp"
                                       MouseLeftButtonDown="Tile_MouseDoubleClick"
                                       AutomationProperties.Name="媒体缩略图卡片">
 
-                                <DockPanel>
+                                <DockPanel Margin="6">
                                   <CheckBox DockPanel.Dock="Top"
                                             IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                             Content="{DynamicResource Media_Select}"
-                                            Margin="4"
+                                            Margin="0,0,0,6"
+                                            FontSize="14"
+                                            Cursor="Hand"
                                             AutomationProperties.Name="选择此文件"/>
                                   <!-- 缩略图 + 视频播放图标叠加 -->
-                                  <Grid Height="120" Margin="4">
-                                    <!-- 缩略图 -->
-                                    <Image Stretch="UniformToFill"
-                                           Source="{Binding Thumbnail}"
-                                           AutomationProperties.Name="{Binding Item.DisplayName}"/>
-                                    <!-- 视频默认占位图标（当缩略图为空且是视频时显示） -->
-                                    <Border Background="#88000000" CornerRadius="4"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            Padding="12">
+                                  <Grid Height="130" Margin="0,0,0,8">
+                                    <!-- 缩略图背景（图片/视频有缩略图时） -->
+                                    <Border CornerRadius="4" Background="#EEEEEE" ClipToBounds="True">
+                                      <Image Stretch="UniformToFill"
+                                             Source="{Binding Thumbnail}"
+                                             AutomationProperties.Name="{Binding Item.DisplayName}"/>
+                                    </Border>
+
+                                    <!-- 视频无缩略图时：深色渐变占位背景 -->
+                                    <Border CornerRadius="4" ClipToBounds="True">
                                       <Border.Style>
                                         <Style TargetType="Border">
                                           <Setter Property="Visibility" Value="Collapsed"/>
@@ -185,13 +278,28 @@
                                           </Style.Triggers>
                                         </Style>
                                       </Border.Style>
-                                      <TextBlock Text="🎬" FontSize="28" Foreground="White"
-                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                      <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                          <GradientStop Color="#2D2D2D" Offset="0"/>
+                                          <GradientStop Color="#1A1A2E" Offset="1"/>
+                                        </LinearGradientBrush>
+                                      </Border.Background>
+                                      <!-- 大播放图标居中 -->
+                                      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#44FFFFFF" CornerRadius="28" Width="56" Height="56"
+                                                HorizontalAlignment="Center">
+                                          <Path Data="M18,12 L38,28 L18,44 Z" Fill="White"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Stretch="Fill" Width="16" Height="20" Margin="4,0,0,0"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding FileExtension}" FontSize="11" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+
+                                      </StackPanel>
                                     </Border>
-                                    <!-- 视频播放图标叠加（当是视频且有缩略图时显示） -->
-                                    <Border Background="#66000000" CornerRadius="20"
-                                            Width="40" Height="40"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+
+                                    <!-- 视频有缩略图时：右下角格式 badge + 中央播放图标 -->
+                                    <Border CornerRadius="4" ClipToBounds="True">
                                       <Border.Style>
                                         <Style TargetType="Border">
                                           <Setter Property="Visibility" Value="Collapsed"/>
@@ -212,13 +320,28 @@
                                           </Style.Triggers>
                                         </Style>
                                       </Border.Style>
-                                      <Path Data="M8,0 L20,10 L8,20 Z" Fill="White"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            Margin="3,0,0,0"/>
+                                      <Grid>
+                                        <!-- 中央播放图标 -->
+                                        <Border Background="#88000000" CornerRadius="22"
+                                                Width="44" Height="44"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                                          <Path Data="M14,10 L30,22 L14,34 Z" Fill="White"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Stretch="Fill" Width="14" Height="16" Margin="3,0,0,0"/>
+                                        </Border>
+                                        <!-- 右下角格式 badge -->
+                                        <Border Background="#CC000000" CornerRadius="3"
+                                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                Margin="0,0,4,4" Padding="5,2">
+                                          <TextBlock Text="{Binding FileExtension}" FontSize="10" FontWeight="Bold"
+                                                     Foreground="White"/>
+                                        </Border>
+                                      </Grid>
                                     </Border>
                                   </Grid>
                                   <TextBlock Text="{Binding Item.DisplayName}" TextTrimming="CharacterEllipsis"
-                                             Margin="4,0,4,4" FontSize="14" MaxHeight="44"/>
+                                             FontSize="13" Foreground="#222222" TextAlignment="Center" VerticalAlignment="Center"/>
+
                                 </DockPanel>
                               </Border>
                             </DataTemplate>
@@ -237,11 +360,16 @@
       <!-- Sticky Header 覆盖层 -->
       <Border x:Name="StickyHeaderBorder"
               VerticalAlignment="Top" HorizontalAlignment="Stretch"
-              Background="#F0F0F0" Padding="8,4" CornerRadius="0,0,4,4"
+              Background="#F2F2F2" Padding="16,8" Margin="-24,-16,-24,0"
+              BorderBrush="#CCCCCC" BorderThickness="0,0,0,1"
               Visibility="Collapsed"
-              IsHitTestVisible="False">
-        <StackPanel Orientation="Horizontal">
-          <TextBlock x:Name="StickyYearText" FontSize="18" FontWeight="Bold" Foreground="#222"/>
+              IsHitTestVisible="False"
+              Panel.ZIndex="5">
+        <Border.Effect>
+          <DropShadowEffect Color="Black" Opacity="0.05" BlurRadius="4" ShadowDepth="2"/>
+        </Border.Effect>
+        <StackPanel Orientation="Horizontal" Margin="24,0,0,0">
+          <TextBlock x:Name="StickyYearText" FontSize="16" FontWeight="Bold" Foreground="#222"/>
           <TextBlock Text=" · " FontSize="16" Foreground="#666" Margin="4,0"/>
           <TextBlock x:Name="StickyMonthText" FontSize="16" FontWeight="SemiBold" Foreground="#444"/>
         </StackPanel>

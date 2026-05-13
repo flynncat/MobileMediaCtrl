@@ -7,13 +7,9 @@
 // Shell 在 Drop 时会枚举 FileGroupDescriptorW，再针对每个文件调用 GetData(FileContents, lindex=i)
 // 拿到 IStream，按需读取数据写入目标位置。这样我们可以"边拖边按需下载"，无需预先全量下载。
 
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
-using System.Windows;
 using ComTypes = System.Runtime.InteropServices.ComTypes;
 
 

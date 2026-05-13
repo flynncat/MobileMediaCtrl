@@ -25,6 +25,10 @@ public sealed class MediaTileViewModel : ViewModelBase
     /// <summary>是否为视频文件。</summary>
     public bool IsVideo => Item.IsVideo;
 
+    /// <summary>文件扩展名（大写，不含点），如 "MP4"、"MOV"、"JPG"。</summary>
+    public string FileExtension => System.IO.Path.GetExtension(Item.DisplayName).TrimStart('.').ToUpperInvariant();
+
+
     public BitmapSource? Thumbnail
     {
         get => _thumbnail;
