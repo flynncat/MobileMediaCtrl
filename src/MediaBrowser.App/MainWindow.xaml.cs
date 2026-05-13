@@ -1,5 +1,4 @@
 ﻿using System.Windows;
-using System.Windows.Controls;
 using MediaBrowser.App.Services;
 using MediaBrowser.App.Views;
 
@@ -33,21 +32,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 动态构造 ContextMenu，每个 MenuItem 对应一个被抑制的设备
-        var menu = new ContextMenu();
+        // 直接打开所有被抑制的设备窗口；
+        // 如果窗口已处于打开状态（理论上不会出现在抑制集合中，但仍做防御），
+        // MediaWindowFactory.OpenForDevice 内部的 TryRegister 失败会自动跳过。
         foreach (var desc in devices)
         {
-            var item = new MenuItem { Header = desc.DisplayName, Tag = desc };
-            item.Click += (_, _) =>
-            {
-                ApplicationSession.Coordinator.UnsuppressSession(desc.SessionKey);
-                MediaWindowFactory.OpenForDevice(desc);
-            };
-            menu.Items.Add(item);
-        }
+            // 先解除抑制，避免新窗口关闭事件触发的 SuppressSession 之前
+            // 这条记录还残留在集合中
+            ApplicationSession.Coordinator.UnsuppressSession(desc.SessionKey);
 
-        ReopenButton.ContextMenu = menu;
-        menu.PlacementTarget = ReopenButton;
-        menu.IsOpen = true;
+            if (MediaWindowRegistry.IsOpen(desc.SessionKey))
+                continue;
+
+            MediaWindowFactory.OpenForDevice(desc);
+        }
     }
 }

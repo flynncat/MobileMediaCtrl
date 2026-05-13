@@ -4,7 +4,41 @@
         Title="{DynamicResource MainWindow_Title}"
         Width="720"
         Height="420"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="#F3F3F3">
+  <Window.Resources>
+    <!-- 与 MediaWindow 一致的按钮基础样式 -->
+    <Style x:Key="ActionButtonStyle" TargetType="Button">
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="Margin" Value="0,0,12,0"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Background" Value="#F9F9F9"/>
+      <Setter Property="BorderBrush" Value="#CCCCCC"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="#222222"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#EAEAEA"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="#DDDDDD"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
   <StackPanel Margin="24" VerticalAlignment="Center">
     <TextBlock Text="{DynamicResource MainWindow_Running}" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12"/>
     <TextBlock Text="{DynamicResource MainWindow_Hint1}"
@@ -14,10 +48,12 @@
                Margin="0,0,0,16"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
       <Button Content="{DynamicResource MainWindow_Settings}" Click="Settings_Click"
-              MinWidth="80" Margin="0,0,12,0"/>
+              Style="{StaticResource ActionButtonStyle}"
+              AutomationProperties.Name="设置"/>
       <Button x:Name="ReopenButton"
               Content="{DynamicResource MainWindow_Reopen}" Click="Reopen_Click"
-              MinWidth="120"/>
+              Style="{StaticResource ActionButtonStyle}"
+              AutomationProperties.Name="重新打开窗口"/>
     </StackPanel>
   </StackPanel>
 </Window>
