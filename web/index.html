@@ -1,0 +1,253 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>MobileMediaCtrl - 整理照片，从未如此简单。</title>
+    <style>
+        :root {
+            --bg-color: #f5f5f7;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --link-color: #0066cc;
+            --card-bg: #ffffff;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            line-height: 1.47059;
+            letter-spacing: -0.022em;
+        }
+
+        .nav {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .nav span {
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: -0.021em;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 140px 20px 60px;
+            background-color: var(--bg-color);
+        }
+
+        .hero h1 {
+            font-size: 56px;
+            line-height: 1.07143;
+            font-weight: 600;
+            letter-spacing: -0.005em;
+            margin: 0 0 15px;
+        }
+
+        .hero p {
+            font-size: 28px;
+            line-height: 1.14286;
+            font-weight: 400;
+            letter-spacing: 0.007em;
+            margin: 0 0 30px;
+            color: var(--text-secondary);
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--link-color);
+            color: #fff;
+            font-size: 17px;
+            line-height: 1.17648;
+            font-weight: 400;
+            letter-spacing: -0.022em;
+            padding: 12px 24px;
+            border-radius: 980px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #0077ed;
+        }
+
+        .section {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 60px 20px;
+        }
+
+        .video-container {
+            background: #000;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            margin: 40px auto;
+            position: relative;
+            padding-bottom: 56.25%; /* 16:9 */
+            height: 0;
+        }
+
+        .video-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .dev-hint {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 15px;
+        }
+
+        .typography-section {
+            text-align: center;
+            padding: 80px 20px;
+            background: #fff;
+        }
+
+        .typography-section h2 {
+            font-size: 48px;
+            line-height: 1.08349;
+            font-weight: 600;
+            letter-spacing: -0.003em;
+            margin: 0 0 20px;
+        }
+
+        .typography-section p {
+            font-size: 21px;
+            line-height: 1.381;
+            font-weight: 400;
+            letter-spacing: 0.011em;
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+        }
+
+        .card h3 {
+            font-size: 24px;
+            line-height: 1.16667;
+            font-weight: 600;
+            letter-spacing: 0.009em;
+            margin: 0 0 15px;
+        }
+
+        .card p {
+            font-size: 17px;
+            line-height: 1.47059;
+            font-weight: 400;
+            letter-spacing: -0.022em;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        @media (max-width: 734px) {
+            .hero h1 { font-size: 40px; }
+            .hero p { font-size: 24px; }
+            .typography-section h2 { font-size: 32px; }
+            .card { padding: 30px; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="nav">
+        <span>MobileMediaCtrl  </span>
+    </nav>
+
+    <header class="hero">
+        <h1>整理照片，<br>从未如此简单。</h1>
+        <p>专为长辈设计，一键开启数字回忆。</p>
+        <a href="#" class="btn">免费下载</a>
+    </header>
+
+    <section class="section">
+        <div class="video-container">
+            <!-- 开发者注意：请修改下方 <source> 标签中的 src 属性为您实际的视频链接 -->
+            <video controls poster="https://via.placeholder.com/1280x720/f5f5f7/1d1d1f?text=点击播放操作演示">
+                <source src="your-video-link-here.mp4" type="video/mp4">
+                您的浏览器不支持视频播放。
+            </video>
+        </div>
+        <div class="dev-hint">
+            开发者提示：请在代码中将 <code>your-video-link-here.mp4</code> 替换为实际的视频路径。
+        </div>
+    </section>
+
+    <section class="typography-section">
+        <h2>化繁为简。</h2>
+        <p>抛开繁琐的系统相册和复杂的云服务。我们专注核心体验，只为您提供最纯粹、最直观的照片整理方式。</p>
+    </section>
+
+    <section class="section">
+        <div class="grid">
+            <div class="card">
+                <h3>自动识别，一键开启。</h3>
+                <p>插入U盘或连接手机，软件即刻响应。无需寻找，无需等待，美好回忆触手可及。</p>
+            </div>
+            <div class="card">
+                <h3>时间线浏览，清晰有序。</h3>
+                <p>所有照片与视频按拍摄时间自动排列。如同翻阅实体相册，岁月痕迹一目了然。</p>
+            </div>
+            <div class="card">
+                <h3>拖拽复制，符合直觉。</h3>
+                <p>选中、拖拽、完成。将复杂的数字操作转化为最自然的物理动作，轻松备份珍贵瞬间。</p>
+            </div>
+            <div class="card">
+                <h3>大巧不工，长辈友好。</h3>
+                <p>醒目的排版，清晰的按钮，纯本地运行。没有广告打扰，更没有隐私泄露的担忧。</p>
+            </div>
+        </div>
+    </section>
+
+    <footer style="text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 12px; border-top: 1px solid rgba(0,0,0,0.05);">
+        <p>让科技成为连接亲情的桥梁。</p>
+        <p>&copy; 2026 MobileMediaCtrl. 保留所有权利。</p>
+    </footer>
+
+</body>
+</html>
