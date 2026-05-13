@@ -7,6 +7,10 @@
   <sys:String x:Key="MainWindow_Hint1">Insert a USB drive or connect your phone and select "File Transfer" to automatically open the browser window.</sys:String>
   <sys:String x:Key="MainWindow_Hint2">You can minimize this window; it won't affect the auto-open feature.</sys:String>
   <sys:String x:Key="MainWindow_Settings">Settings</sys:String>
+  <sys:String x:Key="MainWindow_Reopen">Reopen Window</sys:String>
+  <sys:String x:Key="MainWindow_ReopenTitle">Reopen Window</sys:String>
+  <sys:String x:Key="MainWindow_NoReopenable">No connected devices to reopen. Please insert a USB drive or connect your phone.</sys:String>
+
 
   <!-- MediaWindow -->
   <sys:String x:Key="Media_CopyToFolder">Copy to folder:</sys:String>

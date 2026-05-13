@@ -7,6 +7,10 @@
   <sys:String x:Key="MainWindow_Hint1">插入 U 盘或连接手机并选择"文件传输"模式，将自动弹出浏览窗口。</sys:String>
   <sys:String x:Key="MainWindow_Hint2">可以最小化此窗口，不影响自动弹出功能。</sys:String>
   <sys:String x:Key="MainWindow_Settings">设置</sys:String>
+  <sys:String x:Key="MainWindow_Reopen">重新打开窗口</sys:String>
+  <sys:String x:Key="MainWindow_ReopenTitle">重新打开窗口</sys:String>
+  <sys:String x:Key="MainWindow_NoReopenable">当前没有可重新打开的设备，请插入 U 盘或连接手机。</sys:String>
+
 
   <!-- MediaWindow -->
   <sys:String x:Key="Media_CopyToFolder">复制到文件夹：</sys:String>

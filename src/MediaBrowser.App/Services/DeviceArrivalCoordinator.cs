@@ -16,6 +16,18 @@ public sealed class DeviceArrivalCoordinator : IDisposable
     private DispatcherTimer? _mtpPoll;
     private HashSet<string> _mtpSnapshot = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 用户主动关闭窗口后被抑制的会话键集合，
+    /// 只要设备仍处于连接状态就不会再次自动弹窗。
+    /// 当设备真正被拔出时会自动从该集合中移除。
+    /// 同时记录对应的 DeviceSessionDescriptor，方便"重新打开窗口"按钮直接复用。
+    /// </summary>
+    private readonly Dictionary<string, DeviceSessionDescriptor> _suppressedSessions =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>上一次 RefreshVolumes 枚举到的卷会话键集合，用于探测拔出。</summary>
+    private HashSet<string> _lastVolumeSessionKeys = new(StringComparer.OrdinalIgnoreCase);
+
     private bool _started;
 
     public void Start()
@@ -55,13 +67,66 @@ public sealed class DeviceArrivalCoordinator : IDisposable
         }
     }
 
-    /// <summary>在关闭 MTP 窗口后调用，以便在设备仍连接时可再次自动打开。</summary>
-    public void NotifyMtpSessionClosed(string deviceName)
+    /// <summary>
+    /// 在窗口关闭时调用，将该会话键加入抑制集合，防止下一次轮询自动重弹。
+    /// </summary>
+    public void SuppressSession(DeviceSessionDescriptor descriptor)
+    {
+        if (descriptor == null || string.IsNullOrEmpty(descriptor.SessionKey))
+            return;
+
+        lock (_gate)
+        {
+            _suppressedSessions[descriptor.SessionKey] = descriptor;
+            Debug.WriteLine($"[DeviceArrival] 抑制会话 '{descriptor.SessionKey}' ({descriptor.DisplayName})");
+        }
+    }
+
+    /// <summary>查询某会话键当前是否处于抑制状态。</summary>
+    public bool IsSuppressed(string sessionKey)
+    {
+        if (string.IsNullOrEmpty(sessionKey))
+            return false;
+        lock (_gate)
+        {
+            return _suppressedSessions.ContainsKey(sessionKey);
+        }
+    }
+
+    /// <summary>解除某会话键的抑制状态。</summary>
+    public void UnsuppressSession(string sessionKey)
+    {
+        if (string.IsNullOrEmpty(sessionKey))
+            return;
+        lock (_gate)
+        {
+            if (_suppressedSessions.Remove(sessionKey))
+                Debug.WriteLine($"[DeviceArrival] 解除抑制 '{sessionKey}'");
+        }
+    }
+
+    /// <summary>
+    /// 获取当前所有"已连接但被抑制"的设备描述符，
+    /// 供主窗口"重新打开窗口"按钮显示候选列表使用。
+    /// </summary>
+    public IReadOnlyList<DeviceSessionDescriptor> GetReopenableDevices()
     {
         lock (_gate)
         {
-            _mtpSnapshot.Remove(deviceName);
+            return _suppressedSessions.Values.ToList();
         }
+    }
+
+    /// <summary>
+    /// 兼容旧调用：以前用于在 MTP 窗口关闭后立刻清除快照以便再次自动弹出，
+    /// 现在已由"抑制集合 + 真正拔出时清理"机制替代，因此此方法不再修改快照。
+    /// 保留方法签名以避免破坏既有调用点。
+    /// </summary>
+    public void NotifyMtpSessionClosed(string deviceName)
+    {
+        // 不再从 _mtpSnapshot 移除，否则抑制会立即失效。
+        // 真正的清理由 RefreshMtpDevices 在设备消失时完成。
+        _ = deviceName;
     }
 
     /// <summary>当前已打开的可移动卷的 VolumeLabel 集合，用于排除 MTP 重复检测。</summary>
@@ -70,6 +135,7 @@ public sealed class DeviceArrivalCoordinator : IDisposable
     private void RefreshVolumes()
     {
         var currentLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var currentSessionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var drive in DriveInfo.GetDrives())
         {
@@ -88,7 +154,14 @@ public sealed class DeviceArrivalCoordinator : IDisposable
 
             var root = drive.RootDirectory.FullName;
             var key = MediaWindowRegistry.BuildVolumeSessionKey(root);
+            currentSessionKeys.Add(key);
+
+            // 已打开则跳过
             if (MediaWindowRegistry.IsOpen(key))
+                continue;
+
+            // 被用户主动关闭抑制过：跳过自动弹窗
+            if (IsSuppressed(key))
                 continue;
 
             // 使用卷标签作为显示名（如果有），否则使用盘符
@@ -114,12 +187,27 @@ public sealed class DeviceArrivalCoordinator : IDisposable
             MediaWindowFactory.OpenForDevice(desc);
         }
 
+        // 探测被拔出的卷：上一轮存在但本轮缺失 → 解除抑制（让下次重新插入恢复自动弹窗）
+        List<string>? removedKeys = null;
         lock (_gate)
         {
+            foreach (var oldKey in _lastVolumeSessionKeys)
+            {
+                if (!currentSessionKeys.Contains(oldKey))
+                {
+                    (removedKeys ??= new List<string>()).Add(oldKey);
+                }
+            }
+            _lastVolumeSessionKeys = currentSessionKeys;
             _openVolumeLabels = currentLabels;
         }
-    }
 
+        if (removedKeys != null)
+        {
+            foreach (var key in removedKeys)
+                UnsuppressSession(key);
+        }
+    }
 
     private void RefreshMtpDevices()
     {
@@ -135,9 +223,21 @@ public sealed class DeviceArrivalCoordinator : IDisposable
             return;
         }
 
+        List<string>? removedSessionKeys = null;
+
         lock (_gate)
         {
             var current = names.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // 探测被拔出的 MTP 设备：上一轮快照存在但本轮缺失 → 解除抑制
+            foreach (var oldName in _mtpSnapshot)
+            {
+                if (!current.Contains(oldName))
+                {
+                    var oldKey = MediaWindowRegistry.BuildMtpSessionKey(oldName);
+                    (removedSessionKeys ??= new List<string>()).Add(oldKey);
+                }
+            }
 
             foreach (var name in current)
             {
@@ -164,6 +264,13 @@ public sealed class DeviceArrivalCoordinator : IDisposable
                 if (MediaWindowRegistry.IsOpen(sessionKey))
                     continue;
 
+                // 被用户主动关闭抑制过：跳过自动弹窗（仍要把它放进 _mtpSnapshot 以便后续探测拔出）
+                if (_suppressedSessions.ContainsKey(sessionKey))
+                {
+                    _mtpSnapshot.Add(name);
+                    continue;
+                }
+
                 var desc = new DeviceSessionDescriptor
                 {
                     SessionKey = sessionKey,
@@ -175,6 +282,12 @@ public sealed class DeviceArrivalCoordinator : IDisposable
             }
 
             _mtpSnapshot = current;
+        }
+
+        if (removedSessionKeys != null)
+        {
+            foreach (var key in removedSessionKeys)
+                UnsuppressSession(key);
         }
     }
 
@@ -212,7 +325,6 @@ public sealed class DeviceArrivalCoordinator : IDisposable
 
         return false;
     }
-
 
     public void Dispose()
     {

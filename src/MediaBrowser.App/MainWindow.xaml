@@ -12,7 +12,13 @@
     <TextBlock Text="{DynamicResource MainWindow_Hint2}"
                Opacity="0.85"
                Margin="0,0,0,16"/>
-    <Button Content="{DynamicResource MainWindow_Settings}" Click="Settings_Click"
-            HorizontalAlignment="Left"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+      <Button Content="{DynamicResource MainWindow_Settings}" Click="Settings_Click"
+              MinWidth="80" Margin="0,0,12,0"/>
+      <Button x:Name="ReopenButton"
+              Content="{DynamicResource MainWindow_Reopen}" Click="Reopen_Click"
+              MinWidth="120"/>
+    </StackPanel>
   </StackPanel>
 </Window>
+
