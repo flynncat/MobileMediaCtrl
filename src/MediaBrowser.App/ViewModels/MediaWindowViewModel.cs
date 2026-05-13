@@ -819,8 +819,10 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         }
 
         const int MaxAttempts = 3;
-        bool sameDevice = string.Equals(recordPnpId, currentPnpId, StringComparison.OrdinalIgnoreCase);
-        DragDiagLogger.Log("Download", $"开始下载 mtpPath='{mtpPath}' sameDevice={sameDevice}");
+        // 注意：不再用 PnpId 严格相等判断"是否同一设备"。
+        // 因为 ViewModel 一个窗口对应一个设备 → 凡是从本窗口拖出来的 MTP 项，
+        // 必然就是 _mtpDevice 持有的那台设备。优先复用长连接，避免临时连接的不稳定。
+        DragDiagLogger.Log("Download", $"开始下载 mtpPath='{mtpPath}' recordPnp='{recordPnpId}' localPnp='{currentPnpId}'");
         long startBytes = 0;
         try { startBytes = stream.CanSeek ? stream.Position : 0; } catch { /* 忽略 */ }
 
@@ -828,38 +830,50 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
         {
             for (int attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                MediaDevice? dev = sameDevice ? _mtpDevice : null;
+                MediaDevice? dev = _mtpDevice;
                 bool needDisconnect = false;
 
-                // —— 1. 准备一个可用的 MediaDevice ——
+                // —— 1. 优先复用 ViewModel 长连接 ——
                 bool deviceUsable = false;
                 if (dev != null)
                 {
                     try { deviceUsable = dev.IsConnected; } catch { deviceUsable = false; }
                     if (!deviceUsable)
                     {
+                        // 长连接断开了，尝试就地恢复
                         try { dev.Connect(MediaDeviceAccess.GenericRead, MediaDeviceShare.Read, false); } catch { /* 忽略 */ }
                         try { deviceUsable = dev.IsConnected; } catch { deviceUsable = false; }
+                        DragDiagLogger.Log("Download", $"#{attempt} _mtpDevice 重连结果 ok={deviceUsable}");
                     }
                 }
+                else
+                {
+                    DragDiagLogger.Log("Download", $"#{attempt} _mtpDevice 为 null");
+                }
+
+                // —— 2. 兜底：长连接彻底无救时，临时连接 ——
                 if (!deviceUsable)
                 {
                     dev = MtpDeviceLister.TryConnectByName(recordPnpId ?? currentPnpId ?? "");
                     needDisconnect = dev != null;
                     deviceUsable = dev != null;
-                    DragDiagLogger.Log("Download", $"#{attempt} 主设备不可用，临时连接结果 ok={deviceUsable}");
+                    DragDiagLogger.Log("Download", $"#{attempt} 临时连接兜底结果 ok={deviceUsable}");
                 }
 
                 if (!deviceUsable || dev == null)
                 {
-                    DragDiagLogger.Log("Download", $"#{attempt} 没有可用的 MediaDevice，放弃");
-                    // 整个 MTP 子系统连接不上：直接放弃，没必要重试。
+                    DragDiagLogger.Log("Download", $"#{attempt} 没有可用的 MediaDevice，等待后重试");
+                    if (attempt < MaxAttempts)
+                    {
+                        try { System.Threading.Thread.Sleep(200 * attempt); } catch { /* 忽略 */ }
+                        continue;
+                    }
                     return false;
                 }
 
                 try
                 {
-                    // —— 2. 预热：GetFileInfo 帮助 MediaDevice 完成对象的内部初始化 ——
+                    // —— 3. 预热：GetFileInfo 帮助 MediaDevice 完成对象的内部初始化 ——
                     long preheatLen = -1;
                     try
                     {
@@ -874,7 +888,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                         DragDiagLogger.LogError("Download", $"#{attempt} GetFileInfo 抛异常", exGfi);
                     }
 
-                    // —— 3. 重试前重置流位置，避免重复内容 ——
+                    // —— 4. 重试前重置流位置，避免重复内容 ——
                     if (attempt > 1)
                     {
                         try
@@ -888,7 +902,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                         catch { /* 流可能不支持 SetLength（如 Shell 提供的 IStream），忽略 */ }
                     }
 
-                    // —— 4. 真正下载 ——
+                    // —— 5. 真正下载 ——
                     DragDiagLogger.Log("Download", $"#{attempt} 调用 DownloadFile，预获取大小 {preheatLen}");
                     dev.DownloadFile(mtpPath, stream);
                     try { stream.Flush(); } catch { /* 忽略 */ }
@@ -924,6 +938,8 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
                 }
                 finally
                 {
+                    // 仅当本次确实创建了"临时连接"时才需要释放；
+                    // 复用的 _mtpDevice 长连接绝不能 Disconnect！
                     if (needDisconnect)
                     {
                         try { dev.Disconnect(); } catch { /* 忽略 */ }
@@ -935,6 +951,7 @@ public sealed class MediaWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
     }
+
 
 
 
