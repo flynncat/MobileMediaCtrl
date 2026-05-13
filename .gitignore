@@ -53,3 +53,6 @@ Desktop.ini
 *.swp
 *.tmp
 *~
+
+# Build Output - General folder
+General/
