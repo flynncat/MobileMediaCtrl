@@ -1,3 +1,7 @@
+
+
+- 网站介绍：<https://flynncat.github.io/MobileMediaCtrl/web/>
+
 # MobileMediaCtrl（外接盘媒体浏览与复制）
 
 面向 **Windows** 的小工具：在插入 **U 盘** 或连接 **手机（MTP）** 后自动打开窗口，按**日期时间线**浏览照片与视频，支持勾选、复制到指定文件夹，以及拖到桌面、资源管理器或其它本程序窗口（按对方窗口的「路径栏」作为目标目录）。目前只支持安卓手机，苹果手机有自己的独立APP。
@@ -54,6 +58,4 @@ dotnet run --project src/MediaBrowser.App/MediaBrowser.App.csproj -c Release
 
 若未另行声明，以仓库内 `LICENSE` 为准。
 
-## 相关链接
 
-- 远程仓库：<https://github.com/flynncat/MobileMediaCtrl>
